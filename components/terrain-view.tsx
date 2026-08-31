@@ -79,6 +79,12 @@ const TIANDITU_MAP_NEAR_ZOOM_OFFSET = 2;
 const TIANDITU_MAP_MID_ZOOM_OFFSET = 1;
 const TIANDITU_MAP_FAR_ZOOM_OFFSET = 0;
 const TIANDITU_MAP_ULTRA_ZOOM_OFFSET = -1;
+const TIANDITU_FOCUS_IMAGE_ZOOM = 18;
+const FOCUS_IMAGE_TILE_RADIUS = 1;
+const FOCUS_IMAGE_FORWARD_STEPS = 7;
+const FOCUS_IMAGE_SEGMENTS = 12;
+const FOCUS_IMAGE_ELEVATION_OFFSET = 0.7;
+const FOCUS_IMAGE_MAX_DISTANCE = 42_000;
 const NEAR_TILE_RADIUS = 1;
 const FAR_TILE_RADIUS = 3;
 // The screen focus can straddle several Z12 terrain tiles while flying close.
@@ -97,6 +103,7 @@ const INITIAL_TILE_COUNT = (NEAR_TILE_RADIUS * 2 + 1) ** 2;
 const TILE_COUNT = (FAR_TILE_RADIUS * 2 + 1) ** 2;
 const MAX_ELEVATION_CACHE_TILES = 64;
 const MAX_MAP_CACHE_TILES = 32;
+const MAX_FOCUS_IMAGE_CACHE_TILES = 64;
 const GAMEPAD_PIVOT_DISTANCE = 8;
 const GAMEPAD_MOVE_SPEED_MPS = 33.34;
 const GAMEPAD_TURN_SPEED_RAD = 0.12;
@@ -119,6 +126,7 @@ const COLOR_STOPS = [
 ];
 const tileCache = new Map<string, Promise<TileData>>();
 const mapTileCache = new Map<string, Promise<MapTileData>>();
+const focusImageTileCache = new Map<string, Promise<MapTileData>>();
 let googleTileSessionPromise: Promise<GoogleTileSession> | null = null;
 const MAX_CONCURRENT_TIANDITU_REQUESTS = 8;
 let activeTiandituRequests = 0;
@@ -386,7 +394,7 @@ async function loadTiandituMapTile(
         0.9,
       ),
     );
-    return { blob, provider: 'TIANDITU' };
+    return { blob, provider: 'TIANDITU' } as const;
   }
 
   const subtiles = [
@@ -441,6 +449,66 @@ async function loadTiandituMapTile(
     ),
   );
   return { blob, provider: 'TIANDITU' };
+}
+
+async function loadTiandituFocusImageTile(
+  x: number,
+  y: number,
+): Promise<MapTileData> {
+  const key = `tianditu-focus-z${TIANDITU_FOCUS_IMAGE_ZOOM}/${x}/${y}`;
+  const cached = focusImageTileCache.get(key);
+  if (cached) {
+    touchCacheEntry(focusImageTileCache, key, cached);
+    return cached;
+  }
+
+  const task = (async () => {
+    const parentScale = 2 ** (TIANDITU_FOCUS_IMAGE_ZOOM - ZOOM);
+    const [bitmap, colorReference] = await Promise.all([
+      fetchTiandituBitmap(x, y, TIANDITU_FOCUS_IMAGE_ZOOM),
+      fetchTiandituBitmap(
+        Math.floor(x / parentScale),
+        Math.floor(y / parentScale),
+        ZOOM,
+      ).catch(() => null),
+    ]);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Unable to compose Tianditu focus image');
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    if (colorReference) {
+      // Preserve the source's Z18 detail while matching the colour grade of
+      // the surrounding Z12 terrain texture.
+      context.save();
+      context.globalCompositeOperation = 'color';
+      context.globalAlpha = 0.82;
+      context.drawImage(colorReference, 0, 0, canvas.width, canvas.height);
+      context.restore();
+      colorReference.close();
+    }
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (value) =>
+          value
+            ? resolve(value)
+            : reject(new Error('Focus image encoding failed')),
+        'image/jpeg',
+        0.94,
+      ),
+    );
+    return { blob, provider: 'TIANDITU' } as const;
+  })().catch((error) => {
+    focusImageTileCache.delete(key);
+    throw error;
+  });
+  focusImageTileCache.set(key, task);
+  void task.then(() =>
+    trimCache(focusImageTileCache, MAX_FOCUS_IMAGE_CACHE_TILES),
+  );
+  return task;
 }
 
 async function loadMapTile(
@@ -834,6 +902,9 @@ export function TerrainView({
         const horizonTerrain = new THREE.Group();
         horizonTerrain.name = 'ultra-low-detail-horizon';
         terrain.add(horizonTerrain);
+        const focusImageTerrain = new THREE.Group();
+        focusImageTerrain.name = 'focus-z18-imagery';
+        terrain.add(focusImageTerrain);
         const annotationLayer = new THREE.Group();
         annotationLayer.name = 'terrain-annotations';
         terrain.add(annotationLayer);
@@ -1060,7 +1131,7 @@ export function TerrainView({
           throw new Error('无法读取高程瓦片，请检查网络后重试。');
         }
 
-        const tileLookup = new Map(
+        const tileLookup = new Map<string, TileData>(
           terrainTiles.map((tile) => [`${tile.x}/${tile.y}`, tile] as const),
         );
         const sampleElevation = (
@@ -1484,6 +1555,308 @@ export function TerrainView({
           })().catch((error) => {
             streamInProgress = false;
             console.warn('[terrain] streaming window failed', error);
+          });
+        };
+
+        type FocusImageCoordinate = { x: number; y: number };
+        type FocusImagePatchRecord = {
+          mesh: ThreeTypes.Mesh;
+          material: ThreeTypes.MeshStandardMaterial;
+          texture: ThreeTypes.Texture;
+        };
+        const focusImageScale = 2 ** (TIANDITU_FOCUS_IMAGE_ZOOM - ZOOM);
+        const focusImagePatchRecords = new Map<string, FocusImagePatchRecord>();
+        const focusImageKey = ({ x, y }: FocusImageCoordinate) => `${x}/${y}`;
+        const disposeFocusImagePatch = (key: string) => {
+          const record = focusImagePatchRecords.get(key);
+          if (!record) return;
+          record.mesh.removeFromParent();
+          record.mesh.geometry.dispose();
+          record.material.dispose();
+          record.texture.dispose();
+          const materialIndex = materialRefs.current.findIndex(
+            ({ material }) => material === record.material,
+          );
+          if (materialIndex >= 0) materialRefs.current.splice(materialIndex, 1);
+          focusImagePatchRecords.delete(key);
+        };
+        const getFocusImageCoordinates = (
+          focusPosition: ThreeTypes.Vector3,
+          cameraPosition: ThreeTypes.Vector3,
+        ) => {
+          if (!usesTiandituImagery) return [] as FocusImageCoordinate[];
+          const focusTileX = centerTile.x + focusPosition.x / tileMeterSize;
+          const focusTileY = centerTile.y + focusPosition.z / tileMeterSize;
+          const cameraTileX = centerTile.x + cameraPosition.x / tileMeterSize;
+          const cameraTileY = centerTile.y + cameraPosition.z / tileMeterSize;
+          const distance = Math.hypot(
+            focusPosition.x - cameraPosition.x,
+            focusPosition.y - cameraPosition.y,
+            focusPosition.z - cameraPosition.z,
+          );
+          if (distance > FOCUS_IMAGE_MAX_DISTANCE) {
+            return [] as FocusImageCoordinate[];
+          }
+
+          const centerX = Math.floor(focusTileX * focusImageScale);
+          const centerY = Math.floor(focusTileY * focusImageScale);
+          const directionX = cameraTileX - focusTileX;
+          const directionY = cameraTileY - focusTileY;
+          const directionLength = Math.hypot(directionX, directionY) || 1;
+          const forwardX = directionX / directionLength;
+          const forwardY = directionY / directionLength;
+          const sideX = -forwardY;
+          const sideY = forwardX;
+          const desired = new Map<string, FocusImageCoordinate>();
+          const add = (x: number, y: number) => {
+            const coordinate = { x, y };
+            desired.set(focusImageKey(coordinate), coordinate);
+          };
+
+          for (
+            let row = -FOCUS_IMAGE_TILE_RADIUS;
+            row <= FOCUS_IMAGE_TILE_RADIUS;
+            row += 1
+          ) {
+            for (
+              let column = -FOCUS_IMAGE_TILE_RADIUS;
+              column <= FOCUS_IMAGE_TILE_RADIUS;
+              column += 1
+            ) {
+              add(centerX + column, centerY + row);
+            }
+          }
+          // Extend the detail window toward the camera: this is the part of
+          // the terrain most likely to fill the lower half of the viewport.
+          for (let step = 1; step <= FOCUS_IMAGE_FORWARD_STEPS; step += 1) {
+            for (
+              let lateral = -FOCUS_IMAGE_TILE_RADIUS;
+              lateral <= FOCUS_IMAGE_TILE_RADIUS;
+              lateral += 1
+            ) {
+              add(
+                centerX + Math.round(forwardX * step * 2 + sideX * lateral),
+                centerY + Math.round(forwardY * step * 2 + sideY * lateral),
+              );
+            }
+          }
+          return Array.from(desired.values()).sort(
+            (a, b) =>
+              Math.hypot(a.x - centerX, a.y - centerY) -
+              Math.hypot(b.x - centerX, b.y - centerY),
+          );
+        };
+        const buildFocusImagePatch = async (
+          coordinate: FocusImageCoordinate,
+        ) => {
+          const parentX = Math.floor(coordinate.x / focusImageScale);
+          const parentY = Math.floor(coordinate.y / focusImageScale);
+          const parentKey = `${parentX}/${parentY}`;
+          const parentTile =
+            tileLookup.get(parentKey) ?? (await loadTile(parentX, parentY));
+          tileLookup.set(parentKey, parentTile);
+          const mapBlob = await loadTiandituFocusImageTile(
+            coordinate.x,
+            coordinate.y,
+          );
+          if (disposed) return;
+
+          const segments = FOCUS_IMAGE_SEGMENTS;
+          const vertexCount = (segments + 1) ** 2;
+          const positions = new Float32Array(vertexCount * 3);
+          const normals = new Float32Array(vertexCount * 3);
+          const colors = new Float32Array(vertexCount * 3);
+          const uvs = new Float32Array(vertexCount * 2);
+          const indices = new Uint16Array(segments * segments * 6);
+          const sampleStep = 1 / (segments * focusImageScale);
+          const normalRun = tileMeterSize * sampleStep * 2;
+
+          for (let row = 0; row <= segments; row += 1) {
+            for (let column = 0; column <= segments; column += 1) {
+              const u = column / segments;
+              const v = row / segments;
+              const worldTileX = (coordinate.x + u) / focusImageScale;
+              const worldTileY = (coordinate.y + v) / focusImageScale;
+              const elevation = sampleElevation(
+                worldTileX,
+                worldTileY,
+                parentTile,
+              );
+              const vertex = row * (segments + 1) + column;
+              const offset = vertex * 3;
+              positions[offset] = (worldTileX - centerTile.x) * tileMeterSize;
+              positions[offset + 1] =
+                elevation - BASE_ELEVATION + FOCUS_IMAGE_ELEVATION_OFFSET;
+              positions[offset + 2] =
+                (worldTileY - centerTile.y) * tileMeterSize;
+              const normalX =
+                sampleElevation(
+                  worldTileX - sampleStep,
+                  worldTileY,
+                  parentTile,
+                ) -
+                sampleElevation(
+                  worldTileX + sampleStep,
+                  worldTileY,
+                  parentTile,
+                );
+              const normalZ =
+                sampleElevation(
+                  worldTileX,
+                  worldTileY - sampleStep,
+                  parentTile,
+                ) -
+                sampleElevation(
+                  worldTileX,
+                  worldTileY + sampleStep,
+                  parentTile,
+                );
+              const normalLength = Math.hypot(normalX, normalRun, normalZ);
+              normals[offset] = normalX / normalLength;
+              normals[offset + 1] = normalRun / normalLength;
+              normals[offset + 2] = normalZ / normalLength;
+              heightColor(elevation, tempColor, colorStops);
+              colors[offset] = tempColor.r;
+              colors[offset + 1] = tempColor.g;
+              colors[offset + 2] = tempColor.b;
+              uvs[vertex * 2] = u;
+              uvs[vertex * 2 + 1] = 1 - v;
+            }
+          }
+          let cursor = 0;
+          for (let row = 0; row < segments; row += 1) {
+            for (let column = 0; column < segments; column += 1) {
+              const a = row * (segments + 1) + column;
+              const b = a + 1;
+              const c = a + segments + 1;
+              const d = c + 1;
+              indices[cursor++] = a;
+              indices[cursor++] = c;
+              indices[cursor++] = b;
+              indices[cursor++] = b;
+              indices[cursor++] = c;
+              indices[cursor++] = d;
+            }
+          }
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute(
+            'position',
+            new THREE.BufferAttribute(positions, 3),
+          );
+          geometry.setAttribute(
+            'normal',
+            new THREE.BufferAttribute(normals, 3),
+          );
+          geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+          geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+          geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+          geometry.computeBoundingSphere();
+
+          const bitmap = await createImageBitmap(mapBlob.blob);
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
+          bitmap.close();
+          const texture = new THREE.CanvasTexture(canvas);
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.anisotropy = 16;
+          texture.minFilter = THREE.LinearMipmapLinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.needsUpdate = true;
+          const material = new THREE.MeshStandardMaterial({
+            map: mapOverlayRef.current ? texture : null,
+            vertexColors: !mapOverlayRef.current,
+            roughness: 1,
+            metalness: 0,
+            wireframe: wireframeRef.current,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+          });
+          const key = focusImageKey(coordinate);
+          if (focusImagePatchRecords.has(key)) disposeFocusImagePatch(key);
+          materialRefs.current.push({ material, texture });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.renderOrder = 2;
+          focusImageTerrain.add(mesh);
+          focusImagePatchRecords.set(key, { mesh, material, texture });
+        };
+        let focusImageSignature = '';
+        let queuedFocusImage: {
+          focusPosition: ThreeTypes.Vector3;
+          cameraPosition: ThreeTypes.Vector3;
+        } | null = null;
+        let focusImageStreamInProgress = false;
+        const loadFocusImageWindow = async (
+          focusPosition: ThreeTypes.Vector3,
+          cameraPosition: ThreeTypes.Vector3,
+        ) => {
+          const desiredCoordinates = getFocusImageCoordinates(
+            focusPosition,
+            cameraPosition,
+          );
+          const desiredSignature = desiredCoordinates
+            .map(focusImageKey)
+            .join('|');
+          if (desiredSignature === focusImageSignature) return;
+          const desiredKeys = new Set<string>(
+            desiredCoordinates.map(focusImageKey),
+          );
+          const missing = desiredCoordinates.filter(
+            (coordinate) =>
+              !focusImagePatchRecords.has(focusImageKey(coordinate)),
+          );
+          for (let start = 0; start < missing.length; start += 3) {
+            await Promise.all(
+              missing.slice(start, start + 3).map(async (coordinate) => {
+                try {
+                  await buildFocusImagePatch(coordinate);
+                } catch (error) {
+                  console.warn('[terrain] focus Z18 image failed', {
+                    coordinate,
+                    error,
+                  });
+                }
+              }),
+            );
+            if (disposed) return;
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            );
+          }
+          focusImagePatchRecords.forEach((_record, key) => {
+            if (!desiredKeys.has(key)) disposeFocusImagePatch(key);
+          });
+          focusImageSignature = desiredSignature;
+          console.info('[terrain] focus Z18 imagery ready', {
+            patches: focusImagePatchRecords.size,
+            imageZoom: TIANDITU_FOCUS_IMAGE_ZOOM,
+          });
+        };
+        const requestFocusImageWindow = (
+          focusPosition: ThreeTypes.Vector3,
+          cameraPosition: ThreeTypes.Vector3,
+        ) => {
+          queuedFocusImage = {
+            focusPosition: focusPosition.clone(),
+            cameraPosition: cameraPosition.clone(),
+          };
+          if (focusImageStreamInProgress) return;
+          focusImageStreamInProgress = true;
+          void (async () => {
+            while (!disposed && queuedFocusImage) {
+              const next = queuedFocusImage;
+              queuedFocusImage = null;
+              await loadFocusImageWindow(
+                next.focusPosition,
+                next.cameraPosition,
+              );
+            }
+            focusImageStreamInProgress = false;
+          })().catch((error) => {
+            focusImageStreamInProgress = false;
+            console.warn('[terrain] focus imagery streaming failed', error);
           });
         };
 
@@ -3602,6 +3975,7 @@ export function TerrainView({
             ) {
               requestTerrainWindow(focusX, focusY, camera.position);
             }
+            requestFocusImageWindow(view.target, camera.position);
             const horizonFocusX = Math.floor(focusX / horizonTileScale);
             const horizonFocusY = Math.floor(focusY / horizonTileScale);
             const wantsFarHorizon =
