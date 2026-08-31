@@ -91,7 +91,6 @@ const BASE_ELEVATION = 1_850;
 const TILE_ENDPOINT =
   'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const MAP_ENDPOINT = 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png';
-const TIANDITU_IMAGE_ENDPOINT = 'https://t0.tianditu.gov.cn/img_w/wmts';
 const GOOGLE_MAPS_API_KEY_STORAGE_KEY = 'gyirong.googleMapsApiKey';
 let googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
 const tiandituApiKey = import.meta.env.VITE_TIANDITU_API_KEY?.trim() ?? '';
@@ -280,9 +279,15 @@ async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
     TILECOL: `${x}`,
     tk: tiandituApiKey,
   });
-  const response = await fetch(`${TIANDITU_IMAGE_ENDPOINT}?${params}`, {
-    mode: 'cors',
-  });
+  // Spread concurrent high-detail subtile requests across TianDiTu's public
+  // tile hosts. A single terrain tile may require up to sixteen image tiles.
+  const host = Math.abs(x * 31 + y * 17 + zoom) % 8;
+  const response = await fetch(
+    `https://t${host}.tianditu.gov.cn/img_w/wmts?${params}`,
+    {
+      mode: 'cors',
+    },
+  );
   if (!response.ok) {
     throw new Error(
       `Tianditu image tile ${zoom}/${x}/${y} failed (${response.status})`,
@@ -359,12 +364,14 @@ async function loadTiandituMapTile(
     )),
   ];
   const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width * scale;
-  canvas.height = bitmap.height * scale;
+  const tileWidth = bitmap.width;
+  const tileHeight = bitmap.height;
+  canvas.width = tileWidth * scale;
+  canvas.height = tileHeight * scale;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Unable to compose Tianditu map tiles');
   subtiles.forEach(({ bitmap: subtile, column, row }) => {
-    context.drawImage(subtile, column * bitmap.width, row * bitmap.height);
+    context.drawImage(subtile, column * tileWidth, row * tileHeight);
     subtile.close();
   });
   const blob = await new Promise<Blob>((resolve, reject) =>
