@@ -80,11 +80,11 @@ const TIANDITU_MAP_FAR_ZOOM_OFFSET = 0;
 const TIANDITU_MAP_ULTRA_ZOOM_OFFSET = -1;
 const NEAR_TILE_RADIUS = 1;
 const FAR_TILE_RADIUS = 3;
-// The screen focus can straddle several Z12 terrain tiles at low altitude.
+// The screen focus can straddle several Z12 terrain tiles while flying close.
 // Keep the full 3x3 focus neighborhood at one LOD so an adjacent face never
 // looks softer solely because its tile centre is farther from the camera.
 const FOCUS_NEAR_TILE_RADIUS = 1;
-const FOCUS_NEAR_MAX_CAMERA_HEIGHT = 18_000;
+const FOCUS_NEAR_MAX_DISTANCE = 28_000;
 const LOD_NEAR_PIXELS = 1_400;
 const LOD_MID_PIXELS = 500;
 const LOD_FAR_PIXELS = 180;
@@ -916,6 +916,17 @@ export function TerrainView({
           cameraPosition: ThreeTypes.Vector3,
           currentRecords?: ReadonlyMap<string, { lod: TerrainLod }>,
         ) => {
+          const focusWorldX = (focusX + 0.5 - centerTile.x) * tileMeterSize;
+          const focusWorldZ = (focusY + 0.5 - centerTile.y) * tileMeterSize;
+          // This intentionally measures eye-to-focus distance, not absolute
+          // world height. In the Himalaya a camera can have a large Y value
+          // while still flying only a few kilometres from the aimed-at slope.
+          const isCloseToFocus =
+            Math.hypot(
+              focusWorldX - cameraPosition.x,
+              1_500 - cameraPosition.y,
+              focusWorldZ - cameraPosition.z,
+            ) <= FOCUS_NEAR_MAX_DISTANCE;
           const coordinates: TerrainCoordinate[] = [];
           for (let row = -FAR_TILE_RADIUS; row <= FAR_TILE_RADIUS; row += 1) {
             for (
@@ -927,8 +938,7 @@ export function TerrainView({
               const y = focusY + row;
               const isInFocusedNearBand =
                 Math.max(Math.abs(column), Math.abs(row)) <=
-                  FOCUS_NEAR_TILE_RADIUS &&
-                cameraPosition.y <= FOCUS_NEAR_MAX_CAMERA_HEIGHT;
+                  FOCUS_NEAR_TILE_RADIUS && isCloseToFocus;
               coordinates.push({
                 x,
                 y,
@@ -1259,6 +1269,14 @@ export function TerrainView({
                 lod,
                 triangles: segments * segments * 2,
               });
+              if (lod === 'near') {
+                console.info('[terrain] near texture ready', {
+                  tile: key,
+                  terrainLod: lod,
+                  imageZoom: ZOOM + getMapZoomOffset(lod),
+                  provider: mapBlob?.provider ?? 'NONE',
+                });
+              }
               if (showBlockingLoading) {
                 updateTerrainStats();
                 setLoading(
