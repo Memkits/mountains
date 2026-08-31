@@ -71,9 +71,10 @@ const GOOGLE_MAP_NEAR_ZOOM_OFFSET = 2;
 const GOOGLE_MAP_MID_ZOOM_OFFSET = 1;
 const GOOGLE_MAP_FAR_ZOOM_OFFSET = 0;
 const GOOGLE_MAP_ULTRA_ZOOM_OFFSET = -1;
-// TianDiTu is deliberately capped at Z14 here: one Z12 elevation tile spans
-// four-by-four Z14 image tiles (about 10 m/pixel), while Z15 would require 64
-// requests per terrain tile and makes a close fly-through needlessly bursty.
+// Normal near terrain uses Z14 (about 10 m/pixel). Only the single tile under
+// the close-range screen focus may advance to Z15; applying Z15 to the whole
+// 3x3 neighborhood would require 576 image requests at once.
+const TIANDITU_MAP_DETAIL_ZOOM_OFFSET = 3;
 const TIANDITU_MAP_NEAR_ZOOM_OFFSET = 2;
 const TIANDITU_MAP_MID_ZOOM_OFFSET = 1;
 const TIANDITU_MAP_FAR_ZOOM_OFFSET = 0;
@@ -85,6 +86,7 @@ const FAR_TILE_RADIUS = 3;
 // looks softer solely because its tile centre is farther from the camera.
 const FOCUS_NEAR_TILE_RADIUS = 1;
 const FOCUS_NEAR_MAX_DISTANCE = 28_000;
+const FOCUS_DETAIL_MAX_DISTANCE = 12_000;
 const LOD_NEAR_PIXELS = 1_400;
 const LOD_MID_PIXELS = 500;
 const LOD_FAR_PIXELS = 180;
@@ -849,7 +851,7 @@ export function TerrainView({
           2 ** ZOOM;
         const tileX = Math.floor(centerTile.x);
         const tileY = Math.floor(centerTile.y);
-        type TerrainLod = 'near' | 'mid' | 'far' | 'ultra';
+        type TerrainLod = 'detail' | 'near' | 'mid' | 'far' | 'ultra';
         type TerrainCoordinate = {
           x: number;
           y: number;
@@ -916,7 +918,7 @@ export function TerrainView({
                 : 'ultra';
         };
         const getLodSegments = (lod: TerrainLod) => {
-          if (lod === 'near') return highDetail ? 255 : 127;
+          if (lod === 'detail' || lod === 'near') return highDetail ? 255 : 127;
           if (lod === 'mid') return highDetail ? 95 : 63;
           if (lod === 'far') return 31;
           return 15;
@@ -928,18 +930,20 @@ export function TerrainView({
             isInChina(center.latitude, center.longitude));
         const getMapZoomOffset = (lod: TerrainLod) => {
           // Let close terrain use TianDiTu's actual higher-resolution image
-          // pyramid. The request queue keeps the 4x4 near-tile composition
-          // from flooding the browser or TianDiTu hosts while flying.
+          // pyramid. The request queue keeps the 4x4/8x8 compositions from
+          // flooding the browser or TianDiTu hosts while flying.
           if (usesTiandituImagery) {
-            return lod === 'near'
-              ? TIANDITU_MAP_NEAR_ZOOM_OFFSET
-              : lod === 'mid'
-                ? TIANDITU_MAP_MID_ZOOM_OFFSET
-                : lod === 'far'
-                  ? TIANDITU_MAP_FAR_ZOOM_OFFSET
-                  : TIANDITU_MAP_ULTRA_ZOOM_OFFSET;
+            return lod === 'detail'
+              ? TIANDITU_MAP_DETAIL_ZOOM_OFFSET
+              : lod === 'near'
+                ? TIANDITU_MAP_NEAR_ZOOM_OFFSET
+                : lod === 'mid'
+                  ? TIANDITU_MAP_MID_ZOOM_OFFSET
+                  : lod === 'far'
+                    ? TIANDITU_MAP_FAR_ZOOM_OFFSET
+                    : TIANDITU_MAP_ULTRA_ZOOM_OFFSET;
           }
-          return lod === 'near'
+          return lod === 'detail' || lod === 'near'
             ? GOOGLE_MAP_NEAR_ZOOM_OFFSET
             : lod === 'mid'
               ? GOOGLE_MAP_MID_ZOOM_OFFSET
@@ -958,12 +962,14 @@ export function TerrainView({
           // This intentionally measures eye-to-focus distance, not absolute
           // world height. In the Himalaya a camera can have a large Y value
           // while still flying only a few kilometres from the aimed-at slope.
-          const isCloseToFocus =
-            Math.hypot(
-              focusWorldX - cameraPosition.x,
-              1_500 - cameraPosition.y,
-              focusWorldZ - cameraPosition.z,
-            ) <= FOCUS_NEAR_MAX_DISTANCE;
+          const distanceToFocus = Math.hypot(
+            focusWorldX - cameraPosition.x,
+            1_500 - cameraPosition.y,
+            focusWorldZ - cameraPosition.z,
+          );
+          const isCloseToFocus = distanceToFocus <= FOCUS_NEAR_MAX_DISTANCE;
+          const isVeryCloseToFocus =
+            distanceToFocus <= FOCUS_DETAIL_MAX_DISTANCE;
           const coordinates: TerrainCoordinate[] = [];
           for (let row = -FAR_TILE_RADIUS; row <= FAR_TILE_RADIUS; row += 1) {
             for (
@@ -976,26 +982,31 @@ export function TerrainView({
               const isInFocusedNearBand =
                 Math.max(Math.abs(column), Math.abs(row)) <=
                   FOCUS_NEAR_TILE_RADIUS && isCloseToFocus;
+              const isFocusedDetailTile =
+                column === 0 && row === 0 && isVeryCloseToFocus;
               coordinates.push({
                 x,
                 y,
-                lod: isInFocusedNearBand
-                  ? 'near'
-                  : getTerrainLod(
-                      x,
-                      y,
-                      cameraPosition,
-                      currentRecords?.get(`${x}/${y}`)?.lod,
-                    ),
+                lod: isFocusedDetailTile
+                  ? 'detail'
+                  : isInFocusedNearBand
+                    ? 'near'
+                    : getTerrainLod(
+                        x,
+                        y,
+                        cameraPosition,
+                        currentRecords?.get(`${x}/${y}`)?.lod,
+                      ),
               });
             }
           }
           return coordinates.sort((a, b) => {
             const lodPriority = {
-              near: 0,
-              mid: 1,
-              far: 2,
-              ultra: 3,
+              detail: 0,
+              near: 1,
+              mid: 2,
+              far: 3,
+              ultra: 4,
             } as const;
             return (
               lodPriority[a.lod] - lodPriority[b.lod] ||
@@ -1315,7 +1326,7 @@ export function TerrainView({
                 lod,
                 triangles: segments * segments * 2,
               });
-              if (lod === 'near') {
+              if (lod === 'detail' || lod === 'near') {
                 console.info(
                   '[terrain] near texture ready',
                   JSON.stringify({
@@ -1392,7 +1403,7 @@ export function TerrainView({
             focus: `${focusX}/${focusY}`,
             lod: desiredCoordinates.reduce(
               (counts, { lod }) => ({ ...counts, [lod]: counts[lod] + 1 }),
-              { near: 0, mid: 0, far: 0, ultra: 0 },
+              { detail: 0, near: 0, mid: 0, far: 0, ultra: 0 },
             ),
             missing: missingCoordinates.length,
             resident: terrainTileRecords.size,
