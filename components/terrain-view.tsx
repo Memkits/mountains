@@ -1533,6 +1533,16 @@ export function TerrainView({
             (point.y - centerTile.y) * tileMeterSize,
           );
         };
+        // The disaster, route and border overlays below are local reference
+        // data. Do not place them into an unrelated terrain view after a
+        // coordinate jump.
+        const isGyirongScenario =
+          Math.hypot(
+            (center.latitude - 28.27972) * 111,
+            (center.longitude - 85.37778) *
+              111 *
+              Math.cos((center.latitude * Math.PI) / 180),
+          ) < 420;
 
         const annotationMaterials: ThreeTypes.Material[] = [];
         const annotationTextures: ThreeTypes.Texture[] = [];
@@ -1726,8 +1736,10 @@ export function TerrainView({
         const marker = createMarker({
           latitude: center.latitude,
           longitude: center.longitude,
-          title: '吉隆口岸',
-          subtitle: 'Gyirong / Rasuwagadhi · 约 1,850 m',
+          title: isGyirongScenario ? '吉隆口岸' : '当前观测点',
+          subtitle: isGyirongScenario
+            ? 'Gyirong / Rasuwagadhi · 约 1,850 m'
+            : `${center.latitude.toFixed(5)}° N · ${center.longitude.toFixed(5)}° E`,
           color: '#ff8a61',
           labelOptions: {
             titleFontSize: 66,
@@ -1735,812 +1747,814 @@ export function TerrainView({
             transparentCard: true,
           },
         });
-        createMarker({
-          latitude: 28.288708,
-          longitude: 85.528159,
-          title: '岩冰崩塌源区',
-          subtitle: '2026-08-26 · 卫星分析初步定位',
-          color: '#ff4e45',
-        });
-
-        const chinaCityColor = '#f4c27a';
-        const chinaMetroColor = '#ffd79a';
-        const nepalCityColor = '#72d7cf';
-        const waterFeatureColor = '#84dced';
-        const landmarkColor = '#d8b4fe';
-        [
-          {
-            latitude: 28.856,
-            longitude: 85.297,
-            elevation: 2_700,
-            title: '吉隆镇 · Gyirong',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 29.329,
-            longitude: 85.233,
-            elevation: 4_640,
-            title: '萨嘎 · Saga',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 28.1608,
-            longitude: 85.9772,
-            elevation: 3_750,
-            title: '聂拉木 · Nyalam',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 27.99,
-            longitude: 85.982,
-            elevation: 2_300,
-            title: '樟木 · Zhangmu',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 29.267,
-            longitude: 88.88,
-            elevation: 3_845,
-            title: '日喀则 · Shigatse',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 29.65,
-            longitude: 91.12,
-            elevation: 3_650,
-            title: '拉萨 · Lhasa',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 29.087,
-            longitude: 87.634,
-            elevation: 4_050,
-            title: '拉孜 · Lhatse',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 28.661,
-            longitude: 87.122,
-            elevation: 4_300,
-            title: '定日 · Tingri',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 28.367,
-            longitude: 87.772,
-            elevation: 4_400,
-            title: '定结 · Dinggye',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 29.298,
-            longitude: 87.234,
-            elevation: 4_700,
-            title: '昂仁 · Ngamring',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 29.42,
-            longitude: 86.724,
-            elevation: 4_600,
-            title: '桑桑 · Sangsang',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 31.48,
-            longitude: 92.06,
-            elevation: 4_500,
-            title: '那曲 · Nagqu',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 29.23,
-            longitude: 91.77,
-            elevation: 3_560,
-            title: '山南 · Shannan',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 29.66,
-            longitude: 94.36,
-            elevation: 3_040,
-            title: '林芝 · Nyingchi',
-            subtitle: '中国 · 西藏',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 32.5,
-            longitude: 80.1,
-            elevation: 4_300,
-            title: '狮泉河 · Shiquanhe',
-            subtitle: '中国 · 西藏阿里',
-            color: chinaCityColor,
-          },
-          {
-            latitude: 30.5728,
-            longitude: 104.0668,
-            elevation: 500,
-            title: '成都 · Chengdu',
-            subtitle: '中国 · 四川',
-            color: chinaMetroColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 29.563,
-            longitude: 106.5516,
-            elevation: 250,
-            title: '重庆 · Chongqing',
-            subtitle: '中国 · 直辖市',
-            color: chinaMetroColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 25.0389,
-            longitude: 102.7183,
-            elevation: 1_890,
-            title: '昆明 · Kunming',
-            subtitle: '中国 · 云南',
-            color: chinaMetroColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 34.3416,
-            longitude: 108.9398,
-            elevation: 400,
-            title: '西安 · Xi’an',
-            subtitle: '中国 · 陕西',
-            color: chinaMetroColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 39.9042,
-            longitude: 116.4074,
-            elevation: 43,
-            title: '北京 · Beijing',
-            subtitle: '中国 · 首都',
-            color: chinaMetroColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 31.2304,
-            longitude: 121.4737,
-            elevation: 4,
-            title: '上海 · Shanghai',
-            subtitle: '中国 · 直辖市',
-            color: chinaMetroColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 30.72,
-            longitude: 90.61,
-            elevation: 4_718,
-            title: '纳木错 · Namtso',
-            subtitle: '湖泊 · 西藏',
-            color: waterFeatureColor,
-          },
-          {
-            latitude: 28.98,
-            longitude: 90.74,
-            elevation: 4_441,
-            title: '羊卓雍错 · Yamdrok',
-            subtitle: '湖泊 · 西藏',
-            color: waterFeatureColor,
-          },
-          {
-            latitude: 30.66,
-            longitude: 81.47,
-            elevation: 4_590,
-            title: '玛旁雍错 · Manasarovar',
-            subtitle: '湖泊 · 西藏阿里',
-            color: waterFeatureColor,
-          },
-          {
-            latitude: 33.7,
-            longitude: 78.75,
-            elevation: 4_350,
-            title: '班公错 · Pangong Tso',
-            subtitle: '湖泊 · 阿里',
-            color: waterFeatureColor,
-          },
-          {
-            latitude: 36.9425,
-            longitude: 100.2222,
-            elevation: 3_205,
-            title: '青海湖 · Qinghai Lake',
-            subtitle: '湖泊 · 青海',
-            color: waterFeatureColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 29.04,
-            longitude: 116.35,
-            elevation: 15,
-            title: '鄱阳湖 · Poyang Lake',
-            subtitle: '湖泊 · 江西',
-            color: waterFeatureColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 28.83,
-            longitude: 112.66,
-            elevation: 35,
-            title: '洞庭湖 · Dongting Lake',
-            subtitle: '湖泊 · 湖南',
-            color: waterFeatureColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 29.65,
-            longitude: 91.12,
-            elevation: 3_650,
-            title: '雅鲁藏布江 · Yarlung Tsangpo',
-            subtitle: '河流 · 拉萨河段',
-            color: waterFeatureColor,
-          },
-          {
-            latitude: 29.72,
-            longitude: 94.9,
-            elevation: 1_700,
-            title: '雅鲁藏布大峡谷',
-            subtitle: '河流地标 · 西藏',
-            color: waterFeatureColor,
-          },
-          {
-            latitude: 29.563,
-            longitude: 106.5516,
-            elevation: 250,
-            title: '长江 · Yangtze',
-            subtitle: '河流 · 重庆段',
-            color: waterFeatureColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 36.06,
-            longitude: 103.83,
-            elevation: 1_520,
-            title: '黄河 · Yellow River',
-            subtitle: '河流 · 兰州段',
-            color: waterFeatureColor,
-            maxDistance: 300_000,
-          },
-          {
-            latitude: 27.9881,
-            longitude: 86.925,
-            elevation: 8_849,
-            title: '珠穆朗玛峰 · Everest',
-            subtitle: '高原地标 · 中尼边界',
-            color: landmarkColor,
-          },
-          {
-            latitude: 28.1128,
-            longitude: 85.2961,
-            elevation: 1_967,
-            title: '顿切 · Dhunche',
-            subtitle: '尼泊尔 · Rasuwa',
-            color: nepalCityColor,
-          },
-          {
-            latitude: 27.89,
-            longitude: 85.1597,
-            elevation: 615,
-            title: '比杜尔 · Bidur',
-            subtitle: '尼泊尔 · Nuwakot',
-            color: nepalCityColor,
-          },
-          {
-            latitude: 27.7083,
-            longitude: 85.3206,
-            elevation: 1_400,
-            title: '加德满都 · Kathmandu',
-            subtitle: '尼泊尔首都',
-            color: nepalCityColor,
-          },
-          {
-            latitude: 28.2096,
-            longitude: 83.9856,
-            elevation: 822,
-            title: '博克拉 · Pokhara',
-            subtitle: '尼泊尔 · Gandaki',
-            color: nepalCityColor,
-          },
-          {
-            latitude: 27.6803,
-            longitude: 84.4365,
-            elevation: 208,
-            title: '巴拉特普尔 · Bharatpur',
-            subtitle: '尼泊尔 · Chitwan',
-            color: nepalCityColor,
-          },
-        ].forEach(createNavigationMarker);
-
-        // Main overland corridor used for route orientation: the G318 Sichuan–
-        // Tibet south line to Lhasa / Shigatse, then the G349–G216 approach to
-        // Gyirong. This is a key-place schematic, rather than road-centerline
-        // survey data, so it remains legible across the streamed terrain.
-        const sichuanToGyirongRoute = [
-          [30.5728, 104.0668, 500, '成都 · Chengdu'],
-          [29.98, 103.01, 600, '雅安 · Ya’an'],
-          [30.05, 101.96, 2_600, '康定 · Kangding'],
-          [30.03, 101.5, 3_460, '新都桥 · Xinduqiao'],
-          [30.03, 101.01, 2_600, '雅江 · Yajiang'],
-          [29.99, 100.27, 4_014, '理塘 · Litang'],
-          [30.0, 99.11, 2_580, '巴塘 · Batang'],
-          [29.68, 98.59, 3_870, '芒康 · Mangkang'],
-          [29.67, 97.84, 3_780, '左贡 · Zuogong'],
-          [30.56, 97.34, 4_120, '邦达 · Bangda'],
-          [30.05, 96.92, 3_280, '八宿 · Basu'],
-          [29.45, 96.75, 3_850, '然乌 · Rawu'],
-          [29.86, 95.77, 2_750, '波密 · Bomi'],
-          [29.95, 94.73, 3_320, '鲁朗 · Lulang'],
-          [29.65, 94.36, 3_040, '林芝 · Nyingchi'],
-          [29.88, 93.25, 3_500, '工布江达 · Gongbo’gyamda'],
-          [29.83, 91.73, 3_850, '墨竹工卡 · Maizhokunggar'],
-          [29.65, 91.12, 3_650, '拉萨 · Lhasa'],
-          [29.35, 90.74, 3_600, '曲水 · Qushui'],
-          [29.267, 88.88, 3_845, '日喀则 · Shigatse'],
-          [29.087, 87.634, 4_050, '拉孜 · Lhatse'],
-          [29.02, 86.65, 4_550, 'G349 / G216 转向'],
-          [29.329, 85.233, 4_640, '萨嘎 · Saga'],
-          [28.856, 85.297, 2_700, '吉隆镇 · Gyirong'],
-          [28.27972, 85.37778, 1_850, '吉隆口岸'],
-        ] as const;
-        const routeColor = '#c9a4ff';
-        const routePoints = sichuanToGyirongRoute.map(
-          ([latitude, longitude, elevation]) =>
-            geoPointAtElevation(latitude, longitude, elevation, 150),
-        );
-        const routeCurve = new THREE.CatmullRomCurve3(
-          routePoints,
-          false,
-          'centripetal',
-        );
-        const routeMaterial = new THREE.MeshBasicMaterial({
-          color: routeColor,
-          transparent: true,
-          opacity: 0.76,
-          depthWrite: false,
-        });
-        annotationMaterials.push(routeMaterial);
-        const routeRibbon = new THREE.Mesh(
-          new THREE.TubeGeometry(routeCurve, 720, 95, 7, false),
-          routeMaterial,
-        );
-        routeRibbon.renderOrder = 7;
-        annotationLayer.add(routeRibbon);
-        const routeWaypointIndexes = new Set([
-          1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 18, 21,
-        ]);
-        sichuanToGyirongRoute.forEach(
-          ([latitude, longitude, elevation, title], index) => {
-            if (!routeWaypointIndexes.has(index)) return;
-            createNavigationMarker({
-              latitude,
-              longitude,
-              elevation,
-              title,
-              subtitle:
-                index <= 20
-                  ? 'G318 川藏南线 · 成都 → 拉萨 / 日喀则'
-                  : 'G349 → G216 · 日喀则 → 吉隆口岸',
-              color: routeColor,
-              maxDistance: 180_000,
-            });
-          },
-        );
-
-        // 2026-08-26 source point follows the HiRISK rapid assessment. The
-        // corridor follows the connected OSM waterway graph through Chhochen
-        // Khola, Lende Khola and downstream into Nepal's Bhote Koshi. It is an
-        // orientation aid, not a surveyed inundation boundary.
-        const floodRouteCoordinates = [
-          [28.296368, 85.508783],
-          [28.298115, 85.507713],
-          [28.299632, 85.506573],
-          [28.301039, 85.505546],
-          [28.302454, 85.504346],
-          [28.305964, 85.501719],
-          [28.307738, 85.499765],
-          [28.312362, 85.496308],
-          [28.313639, 85.49365],
-          [28.316827, 85.489295],
-          [28.318899, 85.487844],
-          [28.321287, 85.48831],
-          [28.324661, 85.485808],
-          [28.327203, 85.484638],
-          [28.329354, 85.485037],
-          [28.331059, 85.485687],
-          [28.332937, 85.484339],
-          [28.333008, 85.481588],
-          [28.333131, 85.479882],
-          [28.33301, 85.477478],
-          [28.33323, 85.47537],
-          [28.333794, 85.473897],
-          [28.333818, 85.472246],
-          [28.334289, 85.469916],
-          [28.335413, 85.466437],
-          [28.335856, 85.464337],
-          [28.336622, 85.460929],
-          [28.33682, 85.458506],
-          [28.336373, 85.456989],
-          [28.336056, 85.45431],
-          [28.33512, 85.449938],
-          [28.335554, 85.444362],
-          [28.335269, 85.438218],
-          [28.333635, 85.434674],
-          [28.331944, 85.433215],
-          [28.330372, 85.430691],
-          [28.330472, 85.425733],
-          [28.329259, 85.420362],
-          [28.327052, 85.416923],
-          [28.326511, 85.414594],
-          [28.322635, 85.413289],
-          [28.31916, 85.413961],
-          [28.316884, 85.414377],
-          [28.311115, 85.412949],
-          [28.308276, 85.411939],
-          [28.307021, 85.40915],
-          [28.305478, 85.408593],
-          [28.304534, 85.406891],
-          [28.301496, 85.403576],
-          [28.300754, 85.401773],
-          [28.299136, 85.399567],
-          [28.297441, 85.397377],
-          [28.295017, 85.397296],
-          [28.291933, 85.394529],
-          [28.288701, 85.391775],
-          [28.285951, 85.386986],
-          [28.282743, 85.383533],
-          [28.281687, 85.38141],
-          [28.280374, 85.380776],
-          [28.279744, 85.379659],
-          [28.279441, 85.378955],
-          [28.279029, 85.378506],
-          [28.278514, 85.377759],
-          [28.278055, 85.376979],
-          [28.2779066, 85.3768216],
-          [28.2751452, 85.3773933],
-          [28.2713134, 85.3776048],
-          [28.2682701, 85.376239],
-          [28.266605, 85.3755782],
-          [28.2655288, 85.3738543],
-          [28.2637686, 85.3725293],
-          [28.2617948, 85.371794],
-          [28.2595682, 85.369335],
-          [28.2581913, 85.3658447],
-          [28.2542095, 85.3650429],
-          [28.2514446, 85.3646775],
-          [28.2494292, 85.3648616],
-          [28.2463895, 85.3629994],
-          [28.2434913, 85.3588736],
-          [28.2406879, 85.3582245],
-          [28.2380123, 85.3580332],
-          [28.2368124, 85.3585944],
-          [28.2351725, 85.3590113],
-          [28.2334183, 85.360057],
-          [28.23082, 85.3605317],
-          [28.2285227, 85.361031],
-          [28.2258924, 85.3610873],
-          [28.2237594, 85.3609334],
-          [28.222457, 85.360536],
-          [28.2213028, 85.3593171],
-          [28.2205331, 85.3584718],
-          [28.2190907, 85.3571874],
-          [28.2177415, 85.3557745],
-          [28.216323, 85.3548749],
-          [28.2152425, 85.3546433],
-          [28.212834, 85.3547822],
-          [28.2107702, 85.3541709],
-          [28.2092868, 85.354186],
-          [28.2075826, 85.3545052],
-          [28.2060722, 85.3548431],
-          [28.2047532, 85.3538936],
-          [28.2023396, 85.352985],
-          [28.1980166, 85.3518202],
-          [28.1968721, 85.350757],
-          [28.1919014, 85.3488563],
-          [28.1874569, 85.3459219],
-          [28.1836371, 85.3439246],
-          [28.1820751, 85.3434173],
-          [28.1811583, 85.3427556],
-          [28.1807772, 85.3426722],
-          [28.1789346, 85.3428027],
-          [28.1769611, 85.3427835],
-          [28.1743452, 85.3429465],
-          [28.17265, 85.3427098],
-          [28.1703673, 85.3427419],
-          [28.1681469, 85.3424312],
-          [28.1669935, 85.3427899],
-          [28.1657707, 85.342693],
-          [28.1645234, 85.3415572],
-          [28.1644225, 85.3413057],
-        ] as const;
-        const floodRoutePoints = floodRouteCoordinates.map(
-          ([latitude, longitude]) => geoPoint(latitude, longitude, 82),
-        );
-        const floodRoute = new THREE.CatmullRomCurve3(
-          floodRoutePoints,
-          false,
-          'centripetal',
-        );
-        const floodMaterial = new THREE.MeshBasicMaterial({
-          color: '#44d2e5',
-          transparent: true,
-          opacity: 0.4,
-          depthWrite: false,
-        });
-        annotationMaterials.push(floodMaterial);
-        const floodCorridor = new THREE.Mesh(
-          new THREE.TubeGeometry(floodRoute, 260, 55, 8, false),
-          floodMaterial,
-        );
-        floodCorridor.renderOrder = 8;
-        annotationLayer.add(floodCorridor);
-        createMarker({
-          latitude: 28.330372,
-          longitude: 85.430691,
-          title: '山洪 / 泥石流通道',
-          subtitle: '错坚河 → 东林藏布 → 吉隆口岸（OSM 河道）',
-          color: '#44d2e5',
-        });
-        createMarker({
-          latitude: 28.2542095,
-          longitude: 85.3650429,
-          title: '尼泊尔下游洪水通道',
-          subtitle: 'Timure → Syabrubesi · Bhote Koshi（OSM）',
-          color: '#72dfe9',
-        });
-
-        const buildBorderLineGeometry = (
-          parts: ReadonlyArray<
-            ReadonlyArray<readonly [latitude: number, longitude: number]>
-          >,
-          elevation: number,
-        ) => {
-          const positions: number[] = [];
-          parts.forEach((part) => {
-            if (part.length < 2) return;
-            const points = part.map(([latitude, longitude]) =>
-              geoPointAtElevation(latitude, longitude, elevation),
-            );
-            for (let index = 0; index < points.length - 1; index += 1) {
-              const start = points[index];
-              const end = points[index + 1];
-              positions.push(start.x, start.y, start.z, end.x, end.y, end.z);
-            }
+        if (isGyirongScenario) {
+          createMarker({
+            latitude: 28.288708,
+            longitude: 85.528159,
+            title: '岩冰崩塌源区',
+            subtitle: '2026-08-26 · 卫星分析初步定位',
+            color: '#ff4e45',
           });
-          const geometry = new THREE.BufferGeometry();
-          geometry.setAttribute(
-            'position',
-            new THREE.Float32BufferAttribute(positions, 3),
+
+          const chinaCityColor = '#f4c27a';
+          const chinaMetroColor = '#ffd79a';
+          const nepalCityColor = '#72d7cf';
+          const waterFeatureColor = '#84dced';
+          const landmarkColor = '#d8b4fe';
+          [
+            {
+              latitude: 28.856,
+              longitude: 85.297,
+              elevation: 2_700,
+              title: '吉隆镇 · Gyirong',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 29.329,
+              longitude: 85.233,
+              elevation: 4_640,
+              title: '萨嘎 · Saga',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 28.1608,
+              longitude: 85.9772,
+              elevation: 3_750,
+              title: '聂拉木 · Nyalam',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 27.99,
+              longitude: 85.982,
+              elevation: 2_300,
+              title: '樟木 · Zhangmu',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 29.267,
+              longitude: 88.88,
+              elevation: 3_845,
+              title: '日喀则 · Shigatse',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 29.65,
+              longitude: 91.12,
+              elevation: 3_650,
+              title: '拉萨 · Lhasa',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 29.087,
+              longitude: 87.634,
+              elevation: 4_050,
+              title: '拉孜 · Lhatse',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 28.661,
+              longitude: 87.122,
+              elevation: 4_300,
+              title: '定日 · Tingri',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 28.367,
+              longitude: 87.772,
+              elevation: 4_400,
+              title: '定结 · Dinggye',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 29.298,
+              longitude: 87.234,
+              elevation: 4_700,
+              title: '昂仁 · Ngamring',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 29.42,
+              longitude: 86.724,
+              elevation: 4_600,
+              title: '桑桑 · Sangsang',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 31.48,
+              longitude: 92.06,
+              elevation: 4_500,
+              title: '那曲 · Nagqu',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 29.23,
+              longitude: 91.77,
+              elevation: 3_560,
+              title: '山南 · Shannan',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 29.66,
+              longitude: 94.36,
+              elevation: 3_040,
+              title: '林芝 · Nyingchi',
+              subtitle: '中国 · 西藏',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 32.5,
+              longitude: 80.1,
+              elevation: 4_300,
+              title: '狮泉河 · Shiquanhe',
+              subtitle: '中国 · 西藏阿里',
+              color: chinaCityColor,
+            },
+            {
+              latitude: 30.5728,
+              longitude: 104.0668,
+              elevation: 500,
+              title: '成都 · Chengdu',
+              subtitle: '中国 · 四川',
+              color: chinaMetroColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 29.563,
+              longitude: 106.5516,
+              elevation: 250,
+              title: '重庆 · Chongqing',
+              subtitle: '中国 · 直辖市',
+              color: chinaMetroColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 25.0389,
+              longitude: 102.7183,
+              elevation: 1_890,
+              title: '昆明 · Kunming',
+              subtitle: '中国 · 云南',
+              color: chinaMetroColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 34.3416,
+              longitude: 108.9398,
+              elevation: 400,
+              title: '西安 · Xi’an',
+              subtitle: '中国 · 陕西',
+              color: chinaMetroColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 39.9042,
+              longitude: 116.4074,
+              elevation: 43,
+              title: '北京 · Beijing',
+              subtitle: '中国 · 首都',
+              color: chinaMetroColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 31.2304,
+              longitude: 121.4737,
+              elevation: 4,
+              title: '上海 · Shanghai',
+              subtitle: '中国 · 直辖市',
+              color: chinaMetroColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 30.72,
+              longitude: 90.61,
+              elevation: 4_718,
+              title: '纳木错 · Namtso',
+              subtitle: '湖泊 · 西藏',
+              color: waterFeatureColor,
+            },
+            {
+              latitude: 28.98,
+              longitude: 90.74,
+              elevation: 4_441,
+              title: '羊卓雍错 · Yamdrok',
+              subtitle: '湖泊 · 西藏',
+              color: waterFeatureColor,
+            },
+            {
+              latitude: 30.66,
+              longitude: 81.47,
+              elevation: 4_590,
+              title: '玛旁雍错 · Manasarovar',
+              subtitle: '湖泊 · 西藏阿里',
+              color: waterFeatureColor,
+            },
+            {
+              latitude: 33.7,
+              longitude: 78.75,
+              elevation: 4_350,
+              title: '班公错 · Pangong Tso',
+              subtitle: '湖泊 · 阿里',
+              color: waterFeatureColor,
+            },
+            {
+              latitude: 36.9425,
+              longitude: 100.2222,
+              elevation: 3_205,
+              title: '青海湖 · Qinghai Lake',
+              subtitle: '湖泊 · 青海',
+              color: waterFeatureColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 29.04,
+              longitude: 116.35,
+              elevation: 15,
+              title: '鄱阳湖 · Poyang Lake',
+              subtitle: '湖泊 · 江西',
+              color: waterFeatureColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 28.83,
+              longitude: 112.66,
+              elevation: 35,
+              title: '洞庭湖 · Dongting Lake',
+              subtitle: '湖泊 · 湖南',
+              color: waterFeatureColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 29.65,
+              longitude: 91.12,
+              elevation: 3_650,
+              title: '雅鲁藏布江 · Yarlung Tsangpo',
+              subtitle: '河流 · 拉萨河段',
+              color: waterFeatureColor,
+            },
+            {
+              latitude: 29.72,
+              longitude: 94.9,
+              elevation: 1_700,
+              title: '雅鲁藏布大峡谷',
+              subtitle: '河流地标 · 西藏',
+              color: waterFeatureColor,
+            },
+            {
+              latitude: 29.563,
+              longitude: 106.5516,
+              elevation: 250,
+              title: '长江 · Yangtze',
+              subtitle: '河流 · 重庆段',
+              color: waterFeatureColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 36.06,
+              longitude: 103.83,
+              elevation: 1_520,
+              title: '黄河 · Yellow River',
+              subtitle: '河流 · 兰州段',
+              color: waterFeatureColor,
+              maxDistance: 300_000,
+            },
+            {
+              latitude: 27.9881,
+              longitude: 86.925,
+              elevation: 8_849,
+              title: '珠穆朗玛峰 · Everest',
+              subtitle: '高原地标 · 中尼边界',
+              color: landmarkColor,
+            },
+            {
+              latitude: 28.1128,
+              longitude: 85.2961,
+              elevation: 1_967,
+              title: '顿切 · Dhunche',
+              subtitle: '尼泊尔 · Rasuwa',
+              color: nepalCityColor,
+            },
+            {
+              latitude: 27.89,
+              longitude: 85.1597,
+              elevation: 615,
+              title: '比杜尔 · Bidur',
+              subtitle: '尼泊尔 · Nuwakot',
+              color: nepalCityColor,
+            },
+            {
+              latitude: 27.7083,
+              longitude: 85.3206,
+              elevation: 1_400,
+              title: '加德满都 · Kathmandu',
+              subtitle: '尼泊尔首都',
+              color: nepalCityColor,
+            },
+            {
+              latitude: 28.2096,
+              longitude: 83.9856,
+              elevation: 822,
+              title: '博克拉 · Pokhara',
+              subtitle: '尼泊尔 · Gandaki',
+              color: nepalCityColor,
+            },
+            {
+              latitude: 27.6803,
+              longitude: 84.4365,
+              elevation: 208,
+              title: '巴拉特普尔 · Bharatpur',
+              subtitle: '尼泊尔 · Chitwan',
+              color: nepalCityColor,
+            },
+          ].forEach(createNavigationMarker);
+
+          // Main overland corridor used for route orientation: the G318 Sichuan–
+          // Tibet south line to Lhasa / Shigatse, then the G349–G216 approach to
+          // Gyirong. This is a key-place schematic, rather than road-centerline
+          // survey data, so it remains legible across the streamed terrain.
+          const sichuanToGyirongRoute = [
+            [30.5728, 104.0668, 500, '成都 · Chengdu'],
+            [29.98, 103.01, 600, '雅安 · Ya’an'],
+            [30.05, 101.96, 2_600, '康定 · Kangding'],
+            [30.03, 101.5, 3_460, '新都桥 · Xinduqiao'],
+            [30.03, 101.01, 2_600, '雅江 · Yajiang'],
+            [29.99, 100.27, 4_014, '理塘 · Litang'],
+            [30.0, 99.11, 2_580, '巴塘 · Batang'],
+            [29.68, 98.59, 3_870, '芒康 · Mangkang'],
+            [29.67, 97.84, 3_780, '左贡 · Zuogong'],
+            [30.56, 97.34, 4_120, '邦达 · Bangda'],
+            [30.05, 96.92, 3_280, '八宿 · Basu'],
+            [29.45, 96.75, 3_850, '然乌 · Rawu'],
+            [29.86, 95.77, 2_750, '波密 · Bomi'],
+            [29.95, 94.73, 3_320, '鲁朗 · Lulang'],
+            [29.65, 94.36, 3_040, '林芝 · Nyingchi'],
+            [29.88, 93.25, 3_500, '工布江达 · Gongbo’gyamda'],
+            [29.83, 91.73, 3_850, '墨竹工卡 · Maizhokunggar'],
+            [29.65, 91.12, 3_650, '拉萨 · Lhasa'],
+            [29.35, 90.74, 3_600, '曲水 · Qushui'],
+            [29.267, 88.88, 3_845, '日喀则 · Shigatse'],
+            [29.087, 87.634, 4_050, '拉孜 · Lhatse'],
+            [29.02, 86.65, 4_550, 'G349 / G216 转向'],
+            [29.329, 85.233, 4_640, '萨嘎 · Saga'],
+            [28.856, 85.297, 2_700, '吉隆镇 · Gyirong'],
+            [28.27972, 85.37778, 1_850, '吉隆口岸'],
+          ] as const;
+          const routeColor = '#c9a4ff';
+          const routePoints = sichuanToGyirongRoute.map(
+            ([latitude, longitude, elevation]) =>
+              geoPointAtElevation(latitude, longitude, elevation, 150),
           );
-          geometry.computeBoundingSphere();
-          return geometry;
-        };
-        const createGlobalBorder = (
-          parts: ReadonlyArray<
-            ReadonlyArray<readonly [latitude: number, longitude: number]>
-          >,
-          elevation: number,
-          color: string,
-        ) => {
-          const material = new THREE.LineBasicMaterial({
-            color,
+          const routeCurve = new THREE.CatmullRomCurve3(
+            routePoints,
+            false,
+            'centripetal',
+          );
+          const routeMaterial = new THREE.MeshBasicMaterial({
+            color: routeColor,
             transparent: true,
-            opacity: 0.78,
-            depthTest: true,
+            opacity: 0.76,
             depthWrite: false,
           });
-          annotationMaterials.push(material);
-          const border = new THREE.LineSegments(
-            buildBorderLineGeometry(parts, elevation),
-            material,
+          annotationMaterials.push(routeMaterial);
+          const routeRibbon = new THREE.Mesh(
+            new THREE.TubeGeometry(routeCurve, 720, 95, 7, false),
+            routeMaterial,
           );
-          border.renderOrder = 10;
-          annotationLayer.add(border);
-        };
-
-        createGlobalBorder(CHINA_NEPAL_BORDER_PARTS, 4_750, '#ffe2a8');
-        createGlobalBorder(CHINA_INDIA_BORDER_PARTS, 4_650, '#ffb982');
-
-        // Local China–Nepal international boundary from connected OSM
-        // administrative-boundary ways around Gyirong. This native line adds
-        // local precision on top of the broader Natural Earth navigation band.
-        const internationalBorderCoordinates = [
-          [28.2911553, 85.3473322],
-          [28.2899694, 85.3472303],
-          [28.288337, 85.3481975],
-          [28.2868345, 85.3506518],
-          [28.2865424, 85.3521363],
-          [28.2865868, 85.3533064],
-          [28.2868717, 85.3549141],
-          [28.2865525, 85.3565325],
-          [28.2859602, 85.3583377],
-          [28.2858281, 85.3599856],
-          [28.2855184, 85.3623905],
-          [28.2857316, 85.3642369],
-          [28.2859048, 85.3672808],
-          [28.2856873, 85.3697966],
-          [28.2849661, 85.371323],
-          [28.2834503, 85.3738812],
-          [28.2823011, 85.3754643],
-          [28.2795707, 85.3769479],
-          [28.2781089, 85.3770174],
-          [28.2780384, 85.3769757],
-          [28.2779285, 85.3771953],
-          [28.2802577, 85.3804565],
-          [28.2817185, 85.3823387],
-          [28.2838149, 85.3851719],
-          [28.2851686, 85.3866034],
-          [28.2868759, 85.3880944],
-          [28.287998, 85.3917811],
-          [28.2908885, 85.3938028],
-          [28.2929788, 85.3957868],
-          [28.2951474, 85.3972292],
-          [28.2976124, 85.3972011],
-          [28.2984797, 85.397788],
-          [28.2990879, 85.3997158],
-          [28.29996, 85.4006912],
-          [28.300871, 85.4021112],
-          [28.3032536, 85.405859],
-          [28.3055904, 85.4083784],
-          [28.3072319, 85.4101048],
-          [28.3083373, 85.4116351],
-          [28.3103062, 85.4126287],
-          [28.3130093, 85.4134922],
-          [28.3157895, 85.4137099],
-          [28.3184721, 85.4139921],
-          [28.3225268, 85.413185],
-          [28.325355, 85.4136884],
-          [28.3267135, 85.414622],
-          [28.3270196, 85.4150428],
-          [28.3272626, 85.4154737],
-          [28.32725, 85.4166907],
-          [28.3278978, 85.4187828],
-          [28.3293206, 85.4210003],
-          [28.3297494, 85.4231498],
-          [28.3301916, 85.427734],
-          [28.3300767, 85.4299093],
-          [28.3306945, 85.4311402],
-          [28.3329601, 85.4339561],
-          [28.334331, 85.436064],
-          [28.3350361, 85.4386726],
-          [28.3351329, 85.4419199],
-          [28.3350166, 85.4464968],
-          [28.3349317, 85.4503833],
-          [28.3351949, 85.4525582],
-          [28.3357816, 85.4539535],
-          [28.3360773, 85.456255],
-          [28.3365322, 85.4586354],
-          [28.336116, 85.4608066],
-          [28.3358581, 85.4635995],
-          [28.3350606, 85.4664631],
-          [28.3341679, 85.4696461],
-          [28.3336793, 85.472666],
-          [28.33329, 85.4745467],
-          [28.3329719, 85.4779032],
-          [28.3331249, 85.4799177],
-          [28.3329546, 85.4817356],
-          [28.3331669, 85.4836523],
-          [28.3319678, 85.4854667],
-          [28.3310913, 85.4870939],
-          [28.3312677, 85.4887138],
-          [28.330914, 85.4900083],
-          [28.3316548, 85.4920334],
-          [28.3322196, 85.4951348],
-          [28.3326108, 85.4997303],
-          [28.3336982, 85.5020648],
-          [28.3337287, 85.5036061],
-          [28.3332593, 85.5052352],
-          [28.3330187, 85.5069848],
-          [28.3324402, 85.5091011],
-          [28.3314516, 85.5106626],
-          [28.331252, 85.512697],
-          [28.3307169, 85.5146169],
-          [28.3305435, 85.5178221],
-          [28.3300086, 85.5194275],
-          [28.3292458, 85.5208174],
-          [28.3283, 85.524334],
-          [28.3271131, 85.5262742],
-          [28.3258301, 85.5288973],
-          [28.3246361, 85.5314616],
-          [28.3235176, 85.5332985],
-          [28.3222827, 85.5354139],
-          [28.3210449, 85.5362005],
-          [28.3201784, 85.5377053],
-          [28.3187184, 85.540765],
-          [28.318176, 85.5430624],
-          [28.3169173, 85.5446696],
-          [28.3151059, 85.5464809],
-          [28.3142666, 85.5478972],
-          [28.3135331, 85.5505313],
-          [28.3130537, 85.5522242],
-          [28.3116037, 85.5553692],
-          [28.3115774, 85.5554476],
-        ] as const;
-        const borderGeometry = new THREE.BufferGeometry().setFromPoints(
-          internationalBorderCoordinates.map(([latitude, longitude]) =>
-            geoPoint(latitude, longitude, 58),
-          ),
-        );
-        const borderMaterial = new THREE.LineBasicMaterial({
-          color: '#fff0c9',
-          transparent: true,
-          opacity: 1,
-          depthTest: false,
-          depthWrite: false,
-        });
-        annotationMaterials.push(borderMaterial);
-        const internationalBorder = new THREE.Line(
-          borderGeometry,
-          borderMaterial,
-        );
-        internationalBorder.renderOrder = 7;
-        annotationLayer.add(internationalBorder);
-
-        const borderLabel = createLabel(
-          '中国 / 尼泊尔国境线',
-          'CHINA / NEPAL BORDER · OSM',
-          '#e2d5b9',
-          2_700,
-          620,
-        );
-        borderLabel.position.copy(geoPoint(28.3157895, 85.4137099, 520));
-        annotationLayer.add(borderLabel);
-
-        const createBorderLabel = (
-          title: string,
-          subtitle: string,
-          latitude: number,
-          longitude: number,
-          elevation: number,
-          color: string,
-        ) => {
-          const label = createLabel(title, subtitle, color, 2_450, 565);
-          label.position.copy(
-            geoPointAtElevation(latitude, longitude, elevation, 520),
+          routeRibbon.renderOrder = 7;
+          annotationLayer.add(routeRibbon);
+          const routeWaypointIndexes = new Set([
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 18, 21,
+          ]);
+          sichuanToGyirongRoute.forEach(
+            ([latitude, longitude, elevation, title], index) => {
+              if (!routeWaypointIndexes.has(index)) return;
+              createNavigationMarker({
+                latitude,
+                longitude,
+                elevation,
+                title,
+                subtitle:
+                  index <= 20
+                    ? 'G318 川藏南线 · 成都 → 拉萨 / 日喀则'
+                    : 'G349 → G216 · 日喀则 → 吉隆口岸',
+                color: routeColor,
+                maxDistance: 180_000,
+              });
+            },
           );
-          (
-            label.userData.annotationLabel as AnnotationLabelData
-          ).screenScaleDistance = 92_000;
-          annotationLayer.add(label);
-        };
-        createBorderLabel(
-          '中国 / 尼泊尔国境线',
-          'CHINA / NEPAL · NATURAL EARTH',
-          29.72,
-          83.55,
-          4_750,
-          '#ffe2a8',
-        );
-        createBorderLabel(
-          '中国 / 印度国境线',
-          'CHINA / INDIA · NATURAL EARTH',
-          27.82,
-          88.45,
-          4_650,
-          '#ffb982',
-        );
-        createBorderLabel(
-          '中国 / 印度国境线',
-          'CHINA / INDIA · NATURAL EARTH',
-          30.43,
-          80.45,
-          4_650,
-          '#ffb982',
-        );
+
+          // 2026-08-26 source point follows the HiRISK rapid assessment. The
+          // corridor follows the connected OSM waterway graph through Chhochen
+          // Khola, Lende Khola and downstream into Nepal's Bhote Koshi. It is an
+          // orientation aid, not a surveyed inundation boundary.
+          const floodRouteCoordinates = [
+            [28.296368, 85.508783],
+            [28.298115, 85.507713],
+            [28.299632, 85.506573],
+            [28.301039, 85.505546],
+            [28.302454, 85.504346],
+            [28.305964, 85.501719],
+            [28.307738, 85.499765],
+            [28.312362, 85.496308],
+            [28.313639, 85.49365],
+            [28.316827, 85.489295],
+            [28.318899, 85.487844],
+            [28.321287, 85.48831],
+            [28.324661, 85.485808],
+            [28.327203, 85.484638],
+            [28.329354, 85.485037],
+            [28.331059, 85.485687],
+            [28.332937, 85.484339],
+            [28.333008, 85.481588],
+            [28.333131, 85.479882],
+            [28.33301, 85.477478],
+            [28.33323, 85.47537],
+            [28.333794, 85.473897],
+            [28.333818, 85.472246],
+            [28.334289, 85.469916],
+            [28.335413, 85.466437],
+            [28.335856, 85.464337],
+            [28.336622, 85.460929],
+            [28.33682, 85.458506],
+            [28.336373, 85.456989],
+            [28.336056, 85.45431],
+            [28.33512, 85.449938],
+            [28.335554, 85.444362],
+            [28.335269, 85.438218],
+            [28.333635, 85.434674],
+            [28.331944, 85.433215],
+            [28.330372, 85.430691],
+            [28.330472, 85.425733],
+            [28.329259, 85.420362],
+            [28.327052, 85.416923],
+            [28.326511, 85.414594],
+            [28.322635, 85.413289],
+            [28.31916, 85.413961],
+            [28.316884, 85.414377],
+            [28.311115, 85.412949],
+            [28.308276, 85.411939],
+            [28.307021, 85.40915],
+            [28.305478, 85.408593],
+            [28.304534, 85.406891],
+            [28.301496, 85.403576],
+            [28.300754, 85.401773],
+            [28.299136, 85.399567],
+            [28.297441, 85.397377],
+            [28.295017, 85.397296],
+            [28.291933, 85.394529],
+            [28.288701, 85.391775],
+            [28.285951, 85.386986],
+            [28.282743, 85.383533],
+            [28.281687, 85.38141],
+            [28.280374, 85.380776],
+            [28.279744, 85.379659],
+            [28.279441, 85.378955],
+            [28.279029, 85.378506],
+            [28.278514, 85.377759],
+            [28.278055, 85.376979],
+            [28.2779066, 85.3768216],
+            [28.2751452, 85.3773933],
+            [28.2713134, 85.3776048],
+            [28.2682701, 85.376239],
+            [28.266605, 85.3755782],
+            [28.2655288, 85.3738543],
+            [28.2637686, 85.3725293],
+            [28.2617948, 85.371794],
+            [28.2595682, 85.369335],
+            [28.2581913, 85.3658447],
+            [28.2542095, 85.3650429],
+            [28.2514446, 85.3646775],
+            [28.2494292, 85.3648616],
+            [28.2463895, 85.3629994],
+            [28.2434913, 85.3588736],
+            [28.2406879, 85.3582245],
+            [28.2380123, 85.3580332],
+            [28.2368124, 85.3585944],
+            [28.2351725, 85.3590113],
+            [28.2334183, 85.360057],
+            [28.23082, 85.3605317],
+            [28.2285227, 85.361031],
+            [28.2258924, 85.3610873],
+            [28.2237594, 85.3609334],
+            [28.222457, 85.360536],
+            [28.2213028, 85.3593171],
+            [28.2205331, 85.3584718],
+            [28.2190907, 85.3571874],
+            [28.2177415, 85.3557745],
+            [28.216323, 85.3548749],
+            [28.2152425, 85.3546433],
+            [28.212834, 85.3547822],
+            [28.2107702, 85.3541709],
+            [28.2092868, 85.354186],
+            [28.2075826, 85.3545052],
+            [28.2060722, 85.3548431],
+            [28.2047532, 85.3538936],
+            [28.2023396, 85.352985],
+            [28.1980166, 85.3518202],
+            [28.1968721, 85.350757],
+            [28.1919014, 85.3488563],
+            [28.1874569, 85.3459219],
+            [28.1836371, 85.3439246],
+            [28.1820751, 85.3434173],
+            [28.1811583, 85.3427556],
+            [28.1807772, 85.3426722],
+            [28.1789346, 85.3428027],
+            [28.1769611, 85.3427835],
+            [28.1743452, 85.3429465],
+            [28.17265, 85.3427098],
+            [28.1703673, 85.3427419],
+            [28.1681469, 85.3424312],
+            [28.1669935, 85.3427899],
+            [28.1657707, 85.342693],
+            [28.1645234, 85.3415572],
+            [28.1644225, 85.3413057],
+          ] as const;
+          const floodRoutePoints = floodRouteCoordinates.map(
+            ([latitude, longitude]) => geoPoint(latitude, longitude, 82),
+          );
+          const floodRoute = new THREE.CatmullRomCurve3(
+            floodRoutePoints,
+            false,
+            'centripetal',
+          );
+          const floodMaterial = new THREE.MeshBasicMaterial({
+            color: '#44d2e5',
+            transparent: true,
+            opacity: 0.4,
+            depthWrite: false,
+          });
+          annotationMaterials.push(floodMaterial);
+          const floodCorridor = new THREE.Mesh(
+            new THREE.TubeGeometry(floodRoute, 260, 55, 8, false),
+            floodMaterial,
+          );
+          floodCorridor.renderOrder = 8;
+          annotationLayer.add(floodCorridor);
+          createMarker({
+            latitude: 28.330372,
+            longitude: 85.430691,
+            title: '山洪 / 泥石流通道',
+            subtitle: '错坚河 → 东林藏布 → 吉隆口岸（OSM 河道）',
+            color: '#44d2e5',
+          });
+          createMarker({
+            latitude: 28.2542095,
+            longitude: 85.3650429,
+            title: '尼泊尔下游洪水通道',
+            subtitle: 'Timure → Syabrubesi · Bhote Koshi（OSM）',
+            color: '#72dfe9',
+          });
+
+          const buildBorderLineGeometry = (
+            parts: ReadonlyArray<
+              ReadonlyArray<readonly [latitude: number, longitude: number]>
+            >,
+            elevation: number,
+          ) => {
+            const positions: number[] = [];
+            parts.forEach((part) => {
+              if (part.length < 2) return;
+              const points = part.map(([latitude, longitude]) =>
+                geoPointAtElevation(latitude, longitude, elevation),
+              );
+              for (let index = 0; index < points.length - 1; index += 1) {
+                const start = points[index];
+                const end = points[index + 1];
+                positions.push(start.x, start.y, start.z, end.x, end.y, end.z);
+              }
+            });
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute(
+              'position',
+              new THREE.Float32BufferAttribute(positions, 3),
+            );
+            geometry.computeBoundingSphere();
+            return geometry;
+          };
+          const createGlobalBorder = (
+            parts: ReadonlyArray<
+              ReadonlyArray<readonly [latitude: number, longitude: number]>
+            >,
+            elevation: number,
+            color: string,
+          ) => {
+            const material = new THREE.LineBasicMaterial({
+              color,
+              transparent: true,
+              opacity: 0.78,
+              depthTest: true,
+              depthWrite: false,
+            });
+            annotationMaterials.push(material);
+            const border = new THREE.LineSegments(
+              buildBorderLineGeometry(parts, elevation),
+              material,
+            );
+            border.renderOrder = 10;
+            annotationLayer.add(border);
+          };
+
+          createGlobalBorder(CHINA_NEPAL_BORDER_PARTS, 4_750, '#ffe2a8');
+          createGlobalBorder(CHINA_INDIA_BORDER_PARTS, 4_650, '#ffb982');
+
+          // Local China–Nepal international boundary from connected OSM
+          // administrative-boundary ways around Gyirong. This native line adds
+          // local precision on top of the broader Natural Earth navigation band.
+          const internationalBorderCoordinates = [
+            [28.2911553, 85.3473322],
+            [28.2899694, 85.3472303],
+            [28.288337, 85.3481975],
+            [28.2868345, 85.3506518],
+            [28.2865424, 85.3521363],
+            [28.2865868, 85.3533064],
+            [28.2868717, 85.3549141],
+            [28.2865525, 85.3565325],
+            [28.2859602, 85.3583377],
+            [28.2858281, 85.3599856],
+            [28.2855184, 85.3623905],
+            [28.2857316, 85.3642369],
+            [28.2859048, 85.3672808],
+            [28.2856873, 85.3697966],
+            [28.2849661, 85.371323],
+            [28.2834503, 85.3738812],
+            [28.2823011, 85.3754643],
+            [28.2795707, 85.3769479],
+            [28.2781089, 85.3770174],
+            [28.2780384, 85.3769757],
+            [28.2779285, 85.3771953],
+            [28.2802577, 85.3804565],
+            [28.2817185, 85.3823387],
+            [28.2838149, 85.3851719],
+            [28.2851686, 85.3866034],
+            [28.2868759, 85.3880944],
+            [28.287998, 85.3917811],
+            [28.2908885, 85.3938028],
+            [28.2929788, 85.3957868],
+            [28.2951474, 85.3972292],
+            [28.2976124, 85.3972011],
+            [28.2984797, 85.397788],
+            [28.2990879, 85.3997158],
+            [28.29996, 85.4006912],
+            [28.300871, 85.4021112],
+            [28.3032536, 85.405859],
+            [28.3055904, 85.4083784],
+            [28.3072319, 85.4101048],
+            [28.3083373, 85.4116351],
+            [28.3103062, 85.4126287],
+            [28.3130093, 85.4134922],
+            [28.3157895, 85.4137099],
+            [28.3184721, 85.4139921],
+            [28.3225268, 85.413185],
+            [28.325355, 85.4136884],
+            [28.3267135, 85.414622],
+            [28.3270196, 85.4150428],
+            [28.3272626, 85.4154737],
+            [28.32725, 85.4166907],
+            [28.3278978, 85.4187828],
+            [28.3293206, 85.4210003],
+            [28.3297494, 85.4231498],
+            [28.3301916, 85.427734],
+            [28.3300767, 85.4299093],
+            [28.3306945, 85.4311402],
+            [28.3329601, 85.4339561],
+            [28.334331, 85.436064],
+            [28.3350361, 85.4386726],
+            [28.3351329, 85.4419199],
+            [28.3350166, 85.4464968],
+            [28.3349317, 85.4503833],
+            [28.3351949, 85.4525582],
+            [28.3357816, 85.4539535],
+            [28.3360773, 85.456255],
+            [28.3365322, 85.4586354],
+            [28.336116, 85.4608066],
+            [28.3358581, 85.4635995],
+            [28.3350606, 85.4664631],
+            [28.3341679, 85.4696461],
+            [28.3336793, 85.472666],
+            [28.33329, 85.4745467],
+            [28.3329719, 85.4779032],
+            [28.3331249, 85.4799177],
+            [28.3329546, 85.4817356],
+            [28.3331669, 85.4836523],
+            [28.3319678, 85.4854667],
+            [28.3310913, 85.4870939],
+            [28.3312677, 85.4887138],
+            [28.330914, 85.4900083],
+            [28.3316548, 85.4920334],
+            [28.3322196, 85.4951348],
+            [28.3326108, 85.4997303],
+            [28.3336982, 85.5020648],
+            [28.3337287, 85.5036061],
+            [28.3332593, 85.5052352],
+            [28.3330187, 85.5069848],
+            [28.3324402, 85.5091011],
+            [28.3314516, 85.5106626],
+            [28.331252, 85.512697],
+            [28.3307169, 85.5146169],
+            [28.3305435, 85.5178221],
+            [28.3300086, 85.5194275],
+            [28.3292458, 85.5208174],
+            [28.3283, 85.524334],
+            [28.3271131, 85.5262742],
+            [28.3258301, 85.5288973],
+            [28.3246361, 85.5314616],
+            [28.3235176, 85.5332985],
+            [28.3222827, 85.5354139],
+            [28.3210449, 85.5362005],
+            [28.3201784, 85.5377053],
+            [28.3187184, 85.540765],
+            [28.318176, 85.5430624],
+            [28.3169173, 85.5446696],
+            [28.3151059, 85.5464809],
+            [28.3142666, 85.5478972],
+            [28.3135331, 85.5505313],
+            [28.3130537, 85.5522242],
+            [28.3116037, 85.5553692],
+            [28.3115774, 85.5554476],
+          ] as const;
+          const borderGeometry = new THREE.BufferGeometry().setFromPoints(
+            internationalBorderCoordinates.map(([latitude, longitude]) =>
+              geoPoint(latitude, longitude, 58),
+            ),
+          );
+          const borderMaterial = new THREE.LineBasicMaterial({
+            color: '#fff0c9',
+            transparent: true,
+            opacity: 1,
+            depthTest: false,
+            depthWrite: false,
+          });
+          annotationMaterials.push(borderMaterial);
+          const internationalBorder = new THREE.Line(
+            borderGeometry,
+            borderMaterial,
+          );
+          internationalBorder.renderOrder = 7;
+          annotationLayer.add(internationalBorder);
+
+          const borderLabel = createLabel(
+            '中国 / 尼泊尔国境线',
+            'CHINA / NEPAL BORDER · OSM',
+            '#e2d5b9',
+            2_700,
+            620,
+          );
+          borderLabel.position.copy(geoPoint(28.3157895, 85.4137099, 520));
+          annotationLayer.add(borderLabel);
+
+          const createBorderLabel = (
+            title: string,
+            subtitle: string,
+            latitude: number,
+            longitude: number,
+            elevation: number,
+            color: string,
+          ) => {
+            const label = createLabel(title, subtitle, color, 2_450, 565);
+            label.position.copy(
+              geoPointAtElevation(latitude, longitude, elevation, 520),
+            );
+            (
+              label.userData.annotationLabel as AnnotationLabelData
+            ).screenScaleDistance = 92_000;
+            annotationLayer.add(label);
+          };
+          createBorderLabel(
+            '中国 / 尼泊尔国境线',
+            'CHINA / NEPAL · NATURAL EARTH',
+            29.72,
+            83.55,
+            4_750,
+            '#ffe2a8',
+          );
+          createBorderLabel(
+            '中国 / 印度国境线',
+            'CHINA / INDIA · NATURAL EARTH',
+            27.82,
+            88.45,
+            4_650,
+            '#ffb982',
+          );
+          createBorderLabel(
+            '中国 / 印度国境线',
+            'CHINA / INDIA · NATURAL EARTH',
+            30.43,
+            80.45,
+            4_650,
+            '#ffb982',
+          );
+        }
 
         cleanupListeners.push(() => {
           annotationMaterials.forEach((material) => material.dispose());
