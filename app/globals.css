@@ -299,8 +299,8 @@ input {
   left: 28px;
   display: grid;
   place-items: center;
-  width: 62px;
-  height: 68px;
+  width: 76px;
+  height: 82px;
   margin: 0;
   border: 1px solid rgba(189, 216, 206, 0.18);
   background: linear-gradient(
@@ -316,9 +316,9 @@ input {
 .north-dial {
   position: relative;
   display: block;
-  width: 42px;
-  height: 42px;
-  margin-top: 3px;
+  width: 54px;
+  height: 54px;
+  margin-top: 4px;
   border: 1px solid rgba(189, 216, 206, 0.18);
   border-radius: 50%;
   background:
@@ -334,10 +334,61 @@ input {
 
 .north-needle {
   position: absolute;
-  inset: 2px;
+  inset: 11px;
   display: block;
   transform-origin: 50% 50%;
   will-change: transform;
+}
+
+.compass-cardinal {
+  position: absolute;
+  z-index: 1;
+  color: #91a29e;
+  font:
+    700 9px/1 var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  transition:
+    color 160ms ease,
+    text-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.compass-north,
+.compass-south {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compass-north {
+  top: 3px;
+}
+
+.compass-south {
+  bottom: 3px;
+}
+
+.compass-east,
+.compass-west {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.compass-east {
+  right: 3px;
+}
+
+.compass-west {
+  left: 3px;
+}
+
+.north-dial[data-heading='north'] .compass-north,
+.north-dial[data-heading='east'] .compass-east,
+.north-dial[data-heading='south'] .compass-south,
+.north-dial[data-heading='west'] .compass-west {
+  color: #f58d65;
+  text-shadow: 0 0 8px rgba(245, 141, 101, 0.62);
 }
 
 .north-needle svg {
@@ -361,7 +412,7 @@ input {
 }
 
 .north-indicator b {
-  margin-top: -3px;
+  margin-top: -5px;
   color: #cbd6d1;
   font:
     700 8px/1 var(--font-geist-mono),
@@ -371,7 +422,7 @@ input {
 
 .north-ai-note {
   position: absolute;
-  top: 74px;
+  top: 88px;
   left: 50%;
   padding: 5px 8px;
   border: 1px solid rgba(189, 216, 206, 0.12);
