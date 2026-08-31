@@ -854,14 +854,24 @@ export function TerrainView({
           if (lod === 'far') return 31;
           return 15;
         };
-        const getMapZoomOffset = (lod: TerrainLod) =>
-          lod === 'near'
+        const usesTiandituImagery =
+          mapSource === 'TIANDITU' ||
+          (mapSource === 'AUTO' &&
+            Boolean(tiandituApiKey) &&
+            isInChina(center.latitude, center.longitude));
+        const getMapZoomOffset = (lod: TerrainLod) => {
+          // TianDiTu's imagery at adjacent zoom levels can originate from
+          // different capture mosaics. A single core source zoom keeps LOD
+          // transitions from showing blue/green square boundaries.
+          if (usesTiandituImagery) return 0;
+          return lod === 'near'
             ? GOOGLE_MAP_NEAR_ZOOM_OFFSET
             : lod === 'mid'
               ? GOOGLE_MAP_MID_ZOOM_OFFSET
               : lod === 'far'
                 ? GOOGLE_MAP_FAR_ZOOM_OFFSET
                 : GOOGLE_MAP_ULTRA_ZOOM_OFFSET;
+        };
         const getStreamCoordinates = (
           focusX: number,
           focusY: number,
