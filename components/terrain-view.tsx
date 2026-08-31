@@ -1558,11 +1558,12 @@ export function TerrainView({
           transparentCard?: boolean;
         };
         const annotationLabels: ThreeTypes.Sprite[] = [];
-        const navigationMarkers: Array<{
+        type NavigationMarker = {
           group: ThreeTypes.Group;
           maxDistance: number;
           temporarilyRevealed: boolean;
-        }> = [];
+        };
+        const navigationMarkers: NavigationMarker[] = [];
         const createLabel = (
           title: string,
           subtitle: string,
@@ -1691,15 +1692,17 @@ export function TerrainView({
         }: {
           latitude: number;
           longitude: number;
-          elevation: number;
+          elevation?: number;
           title: string;
           subtitle: string;
           color: string;
           maxDistance?: number;
-        }) => {
+        }): NavigationMarker => {
           const city = new THREE.Group();
           city.position.copy(
-            geoPointAtElevation(latitude, longitude, elevation, 180),
+            elevation === undefined
+              ? geoPoint(latitude, longitude, 180)
+              : geoPointAtElevation(latitude, longitude, elevation, 180),
           );
           const dotMaterial = new THREE.MeshBasicMaterial({
             color,
@@ -1726,11 +1729,13 @@ export function TerrainView({
           labelData.maxScale = 9;
           city.add(dot, label);
           annotationLayer.add(city);
-          navigationMarkers.push({
+          const navigationMarker: NavigationMarker = {
             group: city,
             maxDistance,
             temporarilyRevealed: false,
-          });
+          };
+          navigationMarkers.push(navigationMarker);
+          return navigationMarker;
         };
 
         const marker = createMarker({
@@ -2578,6 +2583,155 @@ export function TerrainView({
         };
         resetRef.current = resetView;
 
+        let placeScanSequence = 0;
+        let dynamicPlaceMarkers: NavigationMarker[] = [];
+        const clearDynamicPlaceMarkers = () => {
+          dynamicPlaceMarkers.forEach(({ group }) => {
+            annotationLayer.remove(group);
+            const markerIndex = navigationMarkers.findIndex(
+              (marker) => marker.group === group,
+            );
+            if (markerIndex >= 0) navigationMarkers.splice(markerIndex, 1);
+          });
+          dynamicPlaceMarkers = [];
+        };
+        const tileToLonLat = (x: number, y: number) => {
+          const scale = 2 ** ZOOM;
+          const longitude = (x / scale) * 360 - 180;
+          const mercatorY = Math.PI - (2 * Math.PI * y) / scale;
+          const latitude = (180 / Math.PI) * Math.atan(Math.sinh(mercatorY));
+          return { latitude, longitude };
+        };
+        const loadScannedPlaces = async () => {
+          const scanId = ++placeScanSequence;
+          const target = tileToLonLat(
+            centerTile.x + view.target.x / tileMeterSize,
+            centerTile.y + view.target.z / tileMeterSize,
+          );
+          // Keep the request small enough for Overpass, but expand it when the
+          // camera is high so a scan describes the land currently in view.
+          const radiusMeters = Math.min(
+            55_000,
+            Math.max(12_000, view.distance * 0.82),
+          );
+          const latitudeDelta = radiusMeters / 111_320;
+          const longitudeDelta =
+            radiusMeters /
+            Math.max(
+              30_000,
+              111_320 * Math.cos((target.latitude * Math.PI) / 180),
+            );
+          const south = (target.latitude - latitudeDelta).toFixed(5);
+          const west = (target.longitude - longitudeDelta).toFixed(5);
+          const north = (target.latitude + latitudeDelta).toFixed(5);
+          const east = (target.longitude + longitudeDelta).toFixed(5);
+          const query = `[out:json][timeout:12];(nwr["place"~"^(city|town|village|hamlet)$"](${south},${west},${north},${east});nwr["natural"~"^(peak|volcano)$"](${south},${west},${north},${east}););out center tags 32;`;
+
+          try {
+            const response = await fetch(
+              'https://overpass-api.de/api/interpreter',
+              {
+                method: 'POST',
+                headers: {
+                  'content-type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({ data: query }),
+              },
+            );
+            if (!response.ok) {
+              throw new Error(`OSM place scan failed (${response.status})`);
+            }
+            const result = (await response.json()) as {
+              elements?: Array<{
+                lat?: number;
+                lon?: number;
+                center?: { lat: number; lon: number };
+                tags?: Record<string, string | undefined>;
+              }>;
+            };
+            if (disposed || scanId !== placeScanSequence) return;
+
+            const places = (result.elements ?? [])
+              .map((element) => {
+                const latitude = element.lat ?? element.center?.lat;
+                const longitude = element.lon ?? element.center?.lon;
+                const tags = element.tags ?? {};
+                const name = tags.name ?? tags['name:zh'] ?? tags['name:en'];
+                const kind = tags.place ?? tags.natural;
+                return { latitude, longitude, name, kind };
+              })
+              .filter(
+                (
+                  place,
+                ): place is {
+                  latitude: number;
+                  longitude: number;
+                  name: string;
+                  kind: string;
+                } =>
+                  Number.isFinite(place.latitude) &&
+                  Number.isFinite(place.longitude) &&
+                  Boolean(place.name) &&
+                  Boolean(place.kind),
+              )
+              .sort((left, right) => {
+                const priority = (kind: string) =>
+                  kind === 'city'
+                    ? 0
+                    : kind === 'town'
+                      ? 1
+                      : kind === 'village'
+                        ? 2
+                        : kind === 'peak'
+                          ? 3
+                          : 4;
+                return priority(left.kind) - priority(right.kind);
+              })
+              .filter(
+                (place, index, all) =>
+                  all.findIndex(
+                    (candidate) =>
+                      candidate.name === place.name &&
+                      Math.abs(candidate.latitude - place.latitude) < 0.005 &&
+                      Math.abs(candidate.longitude - place.longitude) < 0.005,
+                  ) === index,
+              )
+              .slice(0, 18);
+
+            clearDynamicPlaceMarkers();
+            dynamicPlaceMarkers = places.map((place) => {
+              const marker = createNavigationMarker({
+                latitude: place.latitude,
+                longitude: place.longitude,
+                title: place.name,
+                subtitle: `OSM · ${
+                  place.kind === 'city'
+                    ? '城市'
+                    : place.kind === 'town'
+                      ? '城镇'
+                      : place.kind === 'village'
+                        ? '村庄'
+                        : place.kind === 'hamlet'
+                          ? '聚落'
+                          : '山峰'
+                }`,
+                color: '#b9e7ed',
+                maxDistance: radiusMeters * 2.8,
+              });
+              marker.temporarilyRevealed = true;
+              return marker;
+            });
+            console.info('[gamepad] Square OSM place scan complete', {
+              center: target,
+              radiusMeters: Math.round(radiusMeters),
+              loaded: dynamicPlaceMarkers.length,
+            });
+          } catch (error) {
+            if (disposed || scanId !== placeScanSequence) return;
+            console.warn('[gamepad] Square OSM place scan failed', error);
+          }
+        };
+
         const keys = new Set<string>();
         let dragging = false;
         let lastX = 0;
@@ -3018,6 +3172,7 @@ export function TerrainView({
           camera.rotateZ(view.roll);
           camera.updateMatrixWorld();
           if (placeScanRequested) {
+            void loadScannedPlaces();
             let revealed = 0;
             navigationMarkers.forEach((navigationMarker) => {
               navigationMarker.group.getWorldPosition(labelAnchor);
