@@ -15,6 +15,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import { TerrainView, type TerrainStats } from '@/components/terrain-view';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 
@@ -46,6 +47,22 @@ export default function Home() {
   const [highDetail, setHighDetail] = useState(true);
   const [resetSignal, setResetSignal] = useState(0);
   const [stats, setStats] = useState<TerrainStats>(initialStats);
+  const [center, setCenter] = useState({
+    latitude: PORT.latitude,
+    longitude: PORT.longitude,
+  });
+  const [latitudeInput, setLatitudeInput] = useState(PORT.latitude.toFixed(5));
+  const [longitudeInput, setLongitudeInput] = useState(
+    PORT.longitude.toFixed(5),
+  );
+  const [coordinateError, setCoordinateError] = useState<string | null>(null);
+
+  const isDefaultCenter =
+    center.latitude === PORT.latitude && center.longitude === PORT.longitude;
+  const locationName = isDefaultCenter ? PORT.name : '自定义坐标';
+  const locationSubtitle = isDefaultCenter
+    ? PORT.subtitle
+    : `${center.latitude.toFixed(5)}° N · ${center.longitude.toFixed(5)}° E`;
 
   const triangles = useMemo(
     () =>
@@ -69,10 +86,32 @@ export default function Home() {
     }
   };
 
+  const jumpToCoordinates = () => {
+    const latitude = Number(latitudeInput);
+    const longitude = Number(longitudeInput);
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -85 ||
+      latitude > 85 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      setCoordinateError('纬度范围 -85 至 85；经度范围 -180 至 180。');
+      return;
+    }
+    setCoordinateError(null);
+    setCenter({ latitude, longitude });
+    console.info('[coordinates] jumped to terrain center', {
+      latitude,
+      longitude,
+    });
+  };
+
   return (
     <main ref={shellRef} className="terrain-shell">
       <TerrainView
-        center={PORT}
+        center={center}
         exaggeration={exaggeration}
         highDetail={highDetail}
         mapOverlay={mapOverlay}
@@ -95,8 +134,8 @@ export default function Home() {
         <div className="location-chip">
           <MapPin aria-hidden="true" />
           <div>
-            <strong>{PORT.name}</strong>
-            <span>{PORT.subtitle}</span>
+            <strong>{locationName}</strong>
+            <span>{locationSubtitle}</span>
           </div>
         </div>
 
@@ -125,19 +164,19 @@ export default function Home() {
         <p className="eyebrow">当前观测点</p>
         <div className="place-title">
           <div>
-            <h1>{PORT.name}</h1>
-            <p>{PORT.subtitle}</p>
+            <h1>{locationName}</h1>
+            <p>{locationSubtitle}</p>
           </div>
           <Compass aria-hidden="true" />
         </div>
         <div className="coordinate-grid">
           <div>
             <span>LATITUDE</span>
-            <strong>{PORT.latitude.toFixed(5)}° N</strong>
+            <strong>{center.latitude.toFixed(5)}° N</strong>
           </div>
           <div>
             <span>LONGITUDE</span>
-            <strong>{PORT.longitude.toFixed(5)}° E</strong>
+            <strong>{center.longitude.toFixed(5)}° E</strong>
           </div>
         </div>
         <div className="terrain-note">
@@ -164,6 +203,53 @@ export default function Home() {
           </div>
           <Layers3 aria-hidden="true" />
         </div>
+
+        <form
+          className="coordinate-jump"
+          onSubmit={(event) => {
+            event.preventDefault();
+            jumpToCoordinates();
+          }}
+        >
+          <div className="control-label">
+            <span>跳转至经纬度</span>
+            <output>WGS 84</output>
+          </div>
+          <div className="coordinate-inputs">
+            <label htmlFor="terrain-latitude">
+              <span>纬度</span>
+              <Input
+                id="terrain-latitude"
+                inputMode="decimal"
+                min={-85}
+                max={85}
+                step="any"
+                type="number"
+                value={latitudeInput}
+                onChange={(event) => setLatitudeInput(event.target.value)}
+              />
+            </label>
+            <label htmlFor="terrain-longitude">
+              <span>经度</span>
+              <Input
+                id="terrain-longitude"
+                inputMode="decimal"
+                min={-180}
+                max={180}
+                step="any"
+                type="number"
+                value={longitudeInput}
+                onChange={(event) => setLongitudeInput(event.target.value)}
+              />
+            </label>
+          </div>
+          {coordinateError ? (
+            <output className="coordinate-error">{coordinateError}</output>
+          ) : null}
+          <Button size="sm" type="submit" variant="outline">
+            跳转观察
+          </Button>
+        </form>
 
         <div className="control-block">
           <div className="control-label">
