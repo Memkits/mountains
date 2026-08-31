@@ -544,11 +544,18 @@ input {
   gap: 8px;
 }
 
+.coordinate-preset {
+  display: grid;
+  gap: 5px;
+}
+
+.coordinate-preset > span,
 .coordinate-inputs label {
   display: grid;
   gap: 5px;
 }
 
+.coordinate-preset > span,
 .coordinate-inputs label > span,
 .coordinate-error {
   color: #7f9690;
@@ -556,6 +563,30 @@ input {
     600 8px/1 var(--font-geist-mono),
     monospace;
   letter-spacing: 0.08em;
+}
+
+.coordinate-preset select {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgba(189, 216, 206, 0.2);
+  border-radius: 3px;
+  outline: none;
+  background: rgba(189, 216, 206, 0.06);
+  color: #dce8e3;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.coordinate-preset select:focus-visible {
+  border-color: rgba(242, 138, 93, 0.8);
+  box-shadow: 0 0 0 3px rgba(242, 138, 93, 0.14);
+}
+
+.coordinate-preset option,
+.coordinate-preset optgroup {
+  background: #112021;
+  color: #dce8e3;
 }
 
 .coordinate-inputs input {

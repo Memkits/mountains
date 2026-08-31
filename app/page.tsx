@@ -26,6 +26,130 @@ const PORT = {
   longitude: 85.37778,
 };
 
+type CoordinatePreset = {
+  id: string;
+  name: string;
+  subtitle: string;
+  latitude: number;
+  longitude: number;
+};
+
+const coordinatePresetGroups: Array<{
+  label: string;
+  places: CoordinatePreset[];
+}> = [
+  {
+    label: '中国五岳',
+    places: [
+      {
+        id: 'tai-shan',
+        name: '泰山',
+        subtitle: '山东 · 五岳之首',
+        latitude: 36.255,
+        longitude: 117.1,
+      },
+      {
+        id: 'hua-shan',
+        name: '华山',
+        subtitle: '陕西 · 西岳',
+        latitude: 34.482,
+        longitude: 110.085,
+      },
+      {
+        id: 'heng-shan-hunan',
+        name: '衡山',
+        subtitle: '湖南 · 南岳',
+        latitude: 27.306,
+        longitude: 112.705,
+      },
+      {
+        id: 'heng-shan-shanxi',
+        name: '恒山',
+        subtitle: '山西 · 北岳',
+        latitude: 39.67,
+        longitude: 113.73,
+      },
+      {
+        id: 'song-shan',
+        name: '嵩山',
+        subtitle: '河南 · 中岳',
+        latitude: 34.491,
+        longitude: 112.949,
+      },
+    ],
+  },
+  {
+    label: '中国山地',
+    places: [
+      {
+        id: 'dapan-shan',
+        name: '大盘山',
+        subtitle: '浙江磐安 · 大盘山国家级自然保护区',
+        latitude: 28.9,
+        longitude: 120.52,
+      },
+      {
+        id: 'gongga-shan',
+        name: '贡嘎山',
+        subtitle: '四川 · 横断山脉',
+        latitude: 29.595,
+        longitude: 101.878,
+      },
+      {
+        id: 'tian-shan',
+        name: '博格达峰',
+        subtitle: '新疆 · 天山',
+        latitude: 43.79,
+        longitude: 88.3,
+      },
+    ],
+  },
+  {
+    label: '世界名山',
+    places: [
+      {
+        id: 'everest',
+        name: '珠穆朗玛峰',
+        subtitle: '喜马拉雅山脉 · 8,849 m',
+        latitude: 27.9881,
+        longitude: 86.925,
+      },
+      {
+        id: 'fuji',
+        name: '富士山',
+        subtitle: '日本 · 3,776 m',
+        latitude: 35.3606,
+        longitude: 138.7274,
+      },
+      {
+        id: 'kilimanjaro',
+        name: '乞力马扎罗山',
+        subtitle: '坦桑尼亚 · 5,895 m',
+        latitude: -3.0674,
+        longitude: 37.3556,
+      },
+      {
+        id: 'matterhorn',
+        name: '马特洪峰',
+        subtitle: '瑞士 / 意大利 · 4,478 m',
+        latitude: 45.9763,
+        longitude: 7.6586,
+      },
+      {
+        id: 'aconcagua',
+        name: '阿空加瓜山',
+        subtitle: '阿根廷 · 6,961 m',
+        latitude: -32.6532,
+        longitude: -70.0109,
+      },
+    ],
+  },
+];
+
+const coordinatePresets = coordinatePresetGroups.flatMap(
+  (group) => group.places,
+);
+
 const initialStats: TerrainStats = {
   fps: 0,
   triangles: 0,
@@ -56,13 +180,20 @@ export default function Home() {
     PORT.longitude.toFixed(5),
   );
   const [coordinateError, setCoordinateError] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState('default');
 
   const isDefaultCenter =
     center.latitude === PORT.latitude && center.longitude === PORT.longitude;
-  const locationName = isDefaultCenter ? PORT.name : '自定义坐标';
+  const selectedPreset = coordinatePresets.find(
+    (preset) => preset.id === selectedPresetId,
+  );
+  const locationName = isDefaultCenter
+    ? PORT.name
+    : (selectedPreset?.name ?? '自定义坐标');
   const locationSubtitle = isDefaultCenter
     ? PORT.subtitle
-    : `${center.latitude.toFixed(5)}° N · ${center.longitude.toFixed(5)}° E`;
+    : (selectedPreset?.subtitle ??
+      `${center.latitude.toFixed(5)}° N · ${center.longitude.toFixed(5)}° E`);
 
   const triangles = useMemo(
     () =>
@@ -101,11 +232,32 @@ export default function Home() {
       return;
     }
     setCoordinateError(null);
+    setSelectedPresetId('custom');
     setCenter({ latitude, longitude });
     console.info('[coordinates] jumped to terrain center', {
       latitude,
       longitude,
     });
+  };
+
+  const selectCoordinatePreset = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    setCoordinateError(null);
+
+    if (presetId === 'default') {
+      setLatitudeInput(PORT.latitude.toFixed(5));
+      setLongitudeInput(PORT.longitude.toFixed(5));
+      setCenter({ latitude: PORT.latitude, longitude: PORT.longitude });
+      return;
+    }
+
+    const preset = coordinatePresets.find((place) => place.id === presetId);
+    if (!preset) return;
+
+    setLatitudeInput(preset.latitude.toFixed(5));
+    setLongitudeInput(preset.longitude.toFixed(5));
+    setCenter({ latitude: preset.latitude, longitude: preset.longitude });
+    console.info('[coordinates] jumped to preset', preset);
   };
 
   return (
@@ -211,6 +363,28 @@ export default function Home() {
             jumpToCoordinates();
           }}
         >
+          <label className="coordinate-preset" htmlFor="terrain-preset">
+            <span>预设地点</span>
+            <select
+              id="terrain-preset"
+              value={selectedPresetId}
+              onChange={(event) => selectCoordinatePreset(event.target.value)}
+            >
+              <option value="default">默认观测点</option>
+              <option value="custom" disabled>
+                自定义坐标
+              </option>
+              {coordinatePresetGroups.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.places.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name} · {preset.subtitle}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
           <div className="control-label">
             <span>跳转至经纬度</span>
             <output>WGS 84</output>
