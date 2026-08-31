@@ -18,7 +18,7 @@ npm run build:static
 npm run preview
 ```
 
-构建结果位于 `dist/client/`，不依赖 Node.js 服务端、数据库或 API 路由，可部署到 GitHub Pages 或其他静态文件托管服务。
+构建结果位于 `dist/client/`，不依赖 Node.js 服务端、数据库或 API 路由，可部署到任意静态文件服务器。
 
 ## 跳转到坐标
 
@@ -38,9 +38,9 @@ cp .env.example .env.local
 
 1. 打开 Google Cloud Console 的“API 和服务 → 凭据”。
 2. 创建 API Key，并启用 **Map Tiles API**。
-3. 为 Key 设置 HTTP referrer 限制：本地可用 `http://localhost:3001/*`；生产环境填写 GitHub Pages 域名。
+3. 为 Key 设置 HTTP referrer 限制：本地可用 `http://localhost:3001/*`；生产环境填写实际部署站点域名。
 
-GitHub Pages 工作流读取组织或仓库 Actions Secret `VITE_GOOGLE_MAPS_API_KEY`。即使使用 Secret，Web 地图 Key 在浏览器请求中仍可见，因此必须限制 API、来源域名与配额；Secret 的作用是避免 Key 出现在源码与 Git 历史中。
+部署工作流读取组织或仓库 Actions Secret `VITE_GOOGLE_MAPS_API_KEY`。即使使用 Secret，Web 地图 Key 在浏览器请求中仍可见，因此必须限制 API、来源域名与配额；Secret 的作用是避免 Key 出现在源码与 Git 历史中。
 
 ## 控制
 
@@ -59,8 +59,8 @@ GitHub Pages 工作流读取组织或仓库 Actions Secret `VITE_GOOGLE_MAPS_API
 - 静止 0.9 秒后渲染自动降至 30 FPS；交互时恢复 60 FPS。渲染像素比上限为 1.5，以降低高分屏 GPU 负担。
 - 地图标注包含城市、湖泊、河流、高原地标与主干路线；国际边界仅用于场景方位参考，不作法定边界依据。
 
-## GitHub Pages
+## 服务器部署
 
-工作流位于 [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)。向 `main` 推送会构建 `dist/client/` 并部署到 GitHub Pages。
+工作流位于 [.github/workflows/deploy-server.yml](.github/workflows/deploy-server.yml)。向 `main` 推送会构建 `dist/client/`，再通过 `rsync` 上传至已配置的服务器目录。
 
-发布源已配置为 **GitHub Actions**。如组织提供 Key，设置组织 Secret `VITE_GOOGLE_MAPS_API_KEY` 并允许本仓库访问；未配置 Secret 的页面仍可运行，并会在浏览器中提示用户提供受限 Key 或回退到 OpenTopoMap。
+服务器凭据沿用项目原有的组织或仓库 Secret `rsync_private_key`；地图 Key 使用 `VITE_GOOGLE_MAPS_API_KEY`。未配置地图 Key 的页面仍可运行，并会在浏览器中提示用户提供受限 Key 或回退到 OpenTopoMap。

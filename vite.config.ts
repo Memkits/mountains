@@ -6,9 +6,10 @@ import { defineConfig } from 'vite';
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
 
 export default defineConfig({
-  // GitHub Pages serves this repository from /mountains/. Local development
-  // remains rooted at / so the existing Vite URL is unchanged.
-  base: process.env.GITHUB_ACTIONS ? '/mountains/' : '/',
+  // The production workflow uploads the static bundle beneath a repository
+  // directory on the configured server. Relative paths keep all assets valid
+  // regardless of that public mount path; local development stays rooted.
+  base: process.env.GITHUB_ACTIONS ? './' : '/',
   css: { postcss: { plugins: [tailwindcss()] } },
   server: isCodexSeatbeltSandbox
     ? { watch: { useFsEvents: false, usePolling: true } }
