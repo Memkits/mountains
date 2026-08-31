@@ -71,6 +71,13 @@ const GOOGLE_MAP_NEAR_ZOOM_OFFSET = 2;
 const GOOGLE_MAP_MID_ZOOM_OFFSET = 1;
 const GOOGLE_MAP_FAR_ZOOM_OFFSET = 0;
 const GOOGLE_MAP_ULTRA_ZOOM_OFFSET = -1;
+// TianDiTu is deliberately capped at Z14 here: one Z12 elevation tile spans
+// four-by-four Z14 image tiles (about 10 m/pixel), while Z15 would require 64
+// requests per terrain tile and makes a close fly-through needlessly bursty.
+const TIANDITU_MAP_NEAR_ZOOM_OFFSET = 2;
+const TIANDITU_MAP_MID_ZOOM_OFFSET = 1;
+const TIANDITU_MAP_FAR_ZOOM_OFFSET = 0;
+const TIANDITU_MAP_ULTRA_ZOOM_OFFSET = -1;
 const NEAR_TILE_RADIUS = 1;
 const FAR_TILE_RADIUS = 3;
 const LOD_NEAR_PIXELS = 1_400;
@@ -106,6 +113,22 @@ const COLOR_STOPS = [
 const tileCache = new Map<string, Promise<TileData>>();
 const mapTileCache = new Map<string, Promise<MapTileData>>();
 let googleTileSessionPromise: Promise<GoogleTileSession> | null = null;
+const MAX_CONCURRENT_TIANDITU_REQUESTS = 8;
+let activeTiandituRequests = 0;
+const tiandituRequestQueue: Array<() => void> = [];
+
+async function withTiandituRequestSlot<T>(task: () => Promise<T>) {
+  if (activeTiandituRequests >= MAX_CONCURRENT_TIANDITU_REQUESTS) {
+    await new Promise<void>((resolve) => tiandituRequestQueue.push(resolve));
+  }
+  activeTiandituRequests += 1;
+  try {
+    return await task();
+  } finally {
+    activeTiandituRequests -= 1;
+    tiandituRequestQueue.shift()?.();
+  }
+}
 
 function getGoogleMapsApiKey() {
   if (googleMapsApiKey) return googleMapsApiKey;
@@ -282,18 +305,20 @@ async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
   // Spread concurrent high-detail subtile requests across TianDiTu's public
   // tile hosts. A single terrain tile may require up to sixteen image tiles.
   const host = Math.abs(x * 31 + y * 17 + zoom) % 8;
-  const response = await fetch(
-    `https://t${host}.tianditu.gov.cn/img_w/wmts?${params}`,
-    {
-      mode: 'cors',
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Tianditu image tile ${zoom}/${x}/${y} failed (${response.status})`,
+  return withTiandituRequestSlot(async () => {
+    const response = await fetch(
+      `https://t${host}.tianditu.gov.cn/img_w/wmts?${params}`,
+      {
+        mode: 'cors',
+      },
     );
-  }
-  return createImageBitmap(await response.blob());
+    if (!response.ok) {
+      throw new Error(
+        `Tianditu image tile ${zoom}/${x}/${y} failed (${response.status})`,
+      );
+    }
+    return createImageBitmap(await response.blob());
+  });
 }
 
 async function loadTiandituMapTile(
@@ -860,10 +885,18 @@ export function TerrainView({
             Boolean(tiandituApiKey) &&
             isInChina(center.latitude, center.longitude));
         const getMapZoomOffset = (lod: TerrainLod) => {
-          // TianDiTu's imagery at adjacent zoom levels can originate from
-          // different capture mosaics. A single core source zoom keeps LOD
-          // transitions from showing blue/green square boundaries.
-          if (usesTiandituImagery) return 0;
+          // Let close terrain use TianDiTu's actual higher-resolution image
+          // pyramid. The request queue keeps the 4x4 near-tile composition
+          // from flooding the browser or TianDiTu hosts while flying.
+          if (usesTiandituImagery) {
+            return lod === 'near'
+              ? TIANDITU_MAP_NEAR_ZOOM_OFFSET
+              : lod === 'mid'
+                ? TIANDITU_MAP_MID_ZOOM_OFFSET
+                : lod === 'far'
+                  ? TIANDITU_MAP_FAR_ZOOM_OFFSET
+                  : TIANDITU_MAP_ULTRA_ZOOM_OFFSET;
+          }
           return lod === 'near'
             ? GOOGLE_MAP_NEAR_ZOOM_OFFSET
             : lod === 'mid'
