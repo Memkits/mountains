@@ -86,7 +86,7 @@ const FAR_TILE_RADIUS = 3;
 // looks softer solely because its tile centre is farther from the camera.
 const FOCUS_NEAR_TILE_RADIUS = 1;
 const FOCUS_NEAR_MAX_DISTANCE = 28_000;
-const FOCUS_DETAIL_MAX_DISTANCE = 12_000;
+const FOCUS_DETAIL_MAX_DISTANCE = 24_000;
 const LOD_NEAR_PIXELS = 1_400;
 const LOD_MID_PIXELS = 500;
 const LOD_FAR_PIXELS = 180;
