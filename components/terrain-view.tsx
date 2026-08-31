@@ -80,6 +80,11 @@ const TIANDITU_MAP_FAR_ZOOM_OFFSET = 0;
 const TIANDITU_MAP_ULTRA_ZOOM_OFFSET = -1;
 const NEAR_TILE_RADIUS = 1;
 const FAR_TILE_RADIUS = 3;
+// The screen focus can straddle several Z12 terrain tiles at low altitude.
+// Keep the full 3x3 focus neighborhood at one LOD so an adjacent face never
+// looks softer solely because its tile centre is farther from the camera.
+const FOCUS_NEAR_TILE_RADIUS = 1;
+const FOCUS_NEAR_MAX_CAMERA_HEIGHT = 18_000;
 const LOD_NEAR_PIXELS = 1_400;
 const LOD_MID_PIXELS = 500;
 const LOD_FAR_PIXELS = 180;
@@ -920,15 +925,21 @@ export function TerrainView({
             ) {
               const x = focusX + column;
               const y = focusY + row;
+              const isInFocusedNearBand =
+                Math.max(Math.abs(column), Math.abs(row)) <=
+                  FOCUS_NEAR_TILE_RADIUS &&
+                cameraPosition.y <= FOCUS_NEAR_MAX_CAMERA_HEIGHT;
               coordinates.push({
                 x,
                 y,
-                lod: getTerrainLod(
-                  x,
-                  y,
-                  cameraPosition,
-                  currentRecords?.get(`${x}/${y}`)?.lod,
-                ),
+                lod: isInFocusedNearBand
+                  ? 'near'
+                  : getTerrainLod(
+                      x,
+                      y,
+                      cameraPosition,
+                      currentRecords?.get(`${x}/${y}`)?.lod,
+                    ),
               });
             }
           }
