@@ -336,6 +336,13 @@ input {
   position: absolute;
   inset: 11px;
   display: block;
+  z-index: 2;
+}
+
+.north-dial-plate {
+  position: absolute;
+  inset: 0;
+  display: block;
   transform-origin: 50% 50%;
   will-change: transform;
 }
@@ -383,10 +390,10 @@ input {
   left: 3px;
 }
 
-.north-dial[data-heading='north'] .compass-north,
-.north-dial[data-heading='east'] .compass-east,
-.north-dial[data-heading='south'] .compass-south,
-.north-dial[data-heading='west'] .compass-west {
+.north-dial-plate[data-heading='north'] .compass-north,
+.north-dial-plate[data-heading='east'] .compass-east,
+.north-dial-plate[data-heading='south'] .compass-south,
+.north-dial-plate[data-heading='west'] .compass-west {
   color: #f58d65;
   text-shadow: 0 0 8px rgba(245, 141, 101, 0.62);
 }

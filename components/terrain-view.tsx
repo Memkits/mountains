@@ -571,7 +571,6 @@ export function TerrainView({
       texture: ThreeTypes.Texture | null;
     }>
   >([]);
-  const northNeedleRef = useRef<HTMLSpanElement>(null);
   const northDialRef = useRef<HTMLSpanElement>(null);
   const northHeadingRef = useRef<HTMLElement>(null);
   const resetRef = useRef<(() => void) | null>(null);
@@ -3364,9 +3363,6 @@ export function TerrainView({
                 .map((value) => Number(value.toFixed(0))),
             });
           }
-          if (northNeedleRef.current) {
-            northNeedleRef.current.style.transform = `rotate(${view.yaw}rad)`;
-          }
           const compassHeadingIndex =
             ((Math.round(-view.yaw / (Math.PI / 2)) % 4) + 4) % 4;
           const nextCompassHeading = ['north', 'east', 'south', 'west'][
@@ -3374,16 +3370,19 @@ export function TerrainView({
           ];
           if (nextCompassHeading !== compassHeading) {
             compassHeading = nextCompassHeading;
-            northDialRef.current?.setAttribute(
-              'data-heading',
-              nextCompassHeading,
-            );
             const headingText = ['北 N', '东 E', '南 S', '西 W'][
               compassHeadingIndex
             ];
             if (northHeadingRef.current) {
               northHeadingRef.current.textContent = `画面上方 · ${headingText}`;
             }
+          }
+          if (northDialRef.current) {
+            northDialRef.current.style.transform = `rotate(${view.yaw}rad)`;
+            northDialRef.current.setAttribute(
+              'data-heading',
+              nextCompassHeading,
+            );
           }
           marker.rotation.y = -view.yaw;
           annotationLabels.forEach((label) => {
@@ -3550,12 +3549,14 @@ export function TerrainView({
   return (
     <div ref={mountRef} className="terrain-viewport">
       <figure className="north-indicator" aria-label="方向罗盘">
-        <span ref={northDialRef} className="north-dial" aria-hidden="true">
-          <span className="compass-cardinal compass-north">北</span>
-          <span className="compass-cardinal compass-east">东</span>
-          <span className="compass-cardinal compass-south">南</span>
-          <span className="compass-cardinal compass-west">西</span>
-          <span ref={northNeedleRef} className="north-needle">
+        <span className="north-dial" aria-hidden="true">
+          <span ref={northDialRef} className="north-dial-plate">
+            <span className="compass-cardinal compass-north">北</span>
+            <span className="compass-cardinal compass-east">东</span>
+            <span className="compass-cardinal compass-south">南</span>
+            <span className="compass-cardinal compass-west">西</span>
+          </span>
+          <span className="north-needle">
             <svg viewBox="0 0 40 40">
               <path className="north-arrow" d="M20 3 29 30 20 25 11 30Z" />
               <path className="south-arrow" d="m11 30 9-5 9 5-9 7Z" />
