@@ -8,12 +8,15 @@ import {
   CHINA_NEPAL_BORDER_PARTS,
 } from '@/data/international-borders';
 
+export type MapProvider = 'GOOGLE' | 'TIANDITU' | 'OPENTOPO' | 'NONE';
+export type MapSource = 'AUTO' | 'GOOGLE' | 'TIANDITU' | 'OPENTOPO';
+
 export type TerrainStats = {
   fps: number;
   triangles: number;
   loadedTiles: number;
   loadedMapTiles: number;
-  mapProvider: 'GOOGLE' | 'OPENTOPO' | 'NONE';
+  mapProvider: MapProvider;
   totalTiles: number;
   gamepad: string | null;
   gamepadMode: 'DEFAULT' | 'ROLL' | null;
@@ -28,6 +31,7 @@ type TerrainViewProps = {
   exaggeration: number;
   highDetail: boolean;
   mapOverlay: boolean;
+  mapSource: MapSource;
   wireframe: boolean;
   resetSignal: number;
   onStats: (stats: TerrainStats) => void;
@@ -43,7 +47,7 @@ type TileData = {
 
 type MapTileData = {
   blob: Blob;
-  provider: 'GOOGLE' | 'OPENTOPO';
+  provider: Exclude<MapProvider, 'NONE'>;
 };
 
 type GoogleTileSession = {
@@ -87,8 +91,10 @@ const BASE_ELEVATION = 1_850;
 const TILE_ENDPOINT =
   'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const MAP_ENDPOINT = 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png';
+const TIANDITU_IMAGE_ENDPOINT = 'https://t0.tianditu.gov.cn/img_w/wmts';
 const GOOGLE_MAPS_API_KEY_STORAGE_KEY = 'gyirong.googleMapsApiKey';
 let googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
+const tiandituApiKey = import.meta.env.VITE_TIANDITU_API_KEY?.trim() ?? '';
 let hasPromptedForGoogleKey = false;
 const COLOR_STOPS = [
   { h: 1_400, hex: '#17372f' },
@@ -254,14 +260,143 @@ async function getGoogleTileSession(apiKey: string) {
   return googleTileSessionPromise;
 }
 
+function isInChina(latitude: number, longitude: number) {
+  return (
+    latitude >= 18 && latitude <= 54 && longitude >= 73 && longitude <= 135
+  );
+}
+
+async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
+  const params = new URLSearchParams({
+    SERVICE: 'WMTS',
+    REQUEST: 'GetTile',
+    VERSION: '1.0.0',
+    LAYER: 'img',
+    STYLE: 'default',
+    TILEMATRIXSET: 'w',
+    FORMAT: 'tiles',
+    TILEMATRIX: `${zoom}`,
+    TILEROW: `${y}`,
+    TILECOL: `${x}`,
+    tk: tiandituApiKey,
+  });
+  const response = await fetch(`${TIANDITU_IMAGE_ENDPOINT}?${params}`, {
+    mode: 'cors',
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Tianditu image tile ${zoom}/${x}/${y} failed (${response.status})`,
+    );
+  }
+  return createImageBitmap(await response.blob());
+}
+
+async function loadTiandituMapTile(
+  x: number,
+  y: number,
+  zoomOffset: number,
+  baseZoom: number,
+): Promise<MapTileData> {
+  const mapZoom = baseZoom + zoomOffset;
+  const divisor = zoomOffset < 0 ? 2 ** -zoomOffset : 1;
+  const scale = zoomOffset > 0 ? 2 ** zoomOffset : 1;
+  const originX = zoomOffset < 0 ? Math.floor(x / divisor) : x * scale;
+  const originY = zoomOffset < 0 ? Math.floor(y / divisor) : y * scale;
+  const bitmap = await fetchTiandituBitmap(originX, originY, mapZoom);
+
+  if (zoomOffset < 0) {
+    const width = bitmap.width / divisor;
+    const height = bitmap.height / divisor;
+    const column = ((x % divisor) + divisor) % divisor;
+    const row = ((y % divisor) + divisor) % divisor;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas
+      .getContext('2d')
+      ?.drawImage(
+        bitmap,
+        column * width,
+        row * height,
+        width,
+        height,
+        0,
+        0,
+        width,
+        height,
+      );
+    bitmap.close();
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (value) =>
+          value
+            ? resolve(value)
+            : reject(new Error('Map texture encoding failed')),
+        'image/jpeg',
+        0.9,
+      ),
+    );
+    return { blob, provider: 'TIANDITU' };
+  }
+
+  const subtiles = [
+    { bitmap, column: 0, row: 0 },
+    ...(await Promise.all(
+      Array.from({ length: scale * scale - 1 }, async (_, index) => {
+        const tileIndex = index + 1;
+        const column = tileIndex % scale;
+        const row = Math.floor(tileIndex / scale);
+        return {
+          bitmap: await fetchTiandituBitmap(
+            originX + column,
+            originY + row,
+            mapZoom,
+          ),
+          column,
+          row,
+        };
+      }),
+    )),
+  ];
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width * scale;
+  canvas.height = bitmap.height * scale;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Unable to compose Tianditu map tiles');
+  subtiles.forEach(({ bitmap: subtile, column, row }) => {
+    context.drawImage(subtile, column * bitmap.width, row * bitmap.height);
+    subtile.close();
+  });
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (value) =>
+        value
+          ? resolve(value)
+          : reject(new Error('Map texture encoding failed')),
+      'image/jpeg',
+      0.94,
+    ),
+  );
+  return { blob, provider: 'TIANDITU' };
+}
+
 async function loadMapTile(
   x: number,
   y: number,
-  googleZoomOffset = GOOGLE_MAP_FAR_ZOOM_OFFSET,
+  mapZoomOffset = GOOGLE_MAP_FAR_ZOOM_OFFSET,
   baseZoom = ZOOM,
+  source: MapSource = 'AUTO',
+  latitude = 0,
+  longitude = 0,
 ): Promise<MapTileData> {
-  const apiKey = getGoogleMapsApiKey();
-  const key = `${apiKey ? `google-satellite-z${baseZoom + googleZoomOffset}` : 'opentopo'}/${baseZoom}/${x}/${y}`;
+  const resolvedSource =
+    source === 'AUTO'
+      ? tiandituApiKey && isInChina(latitude, longitude)
+        ? 'TIANDITU'
+        : 'GOOGLE'
+      : source;
+  let apiKey = resolvedSource === 'GOOGLE' ? getGoogleMapsApiKey() : null;
+  const key = `${resolvedSource.toLowerCase()}-z${baseZoom + mapZoomOffset}/${baseZoom}/${x}/${y}`;
   const cached = mapTileCache.get(key);
   if (cached) {
     touchCacheEntry(mapTileCache, key, cached);
@@ -269,13 +404,24 @@ async function loadMapTile(
   }
 
   const task = (async () => {
+    if (resolvedSource === 'TIANDITU' && tiandituApiKey) {
+      try {
+        return await loadTiandituMapTile(x, y, mapZoomOffset, baseZoom);
+      } catch (error) {
+        console.warn(
+          'Tianditu image tiles unavailable; using fallback.',
+          error,
+        );
+        if (source === 'AUTO') apiKey = getGoogleMapsApiKey();
+      }
+    }
     if (apiKey) {
       try {
         const session = await getGoogleTileSession(apiKey);
         if (session) {
-          const mapZoom = baseZoom + googleZoomOffset;
-          if (googleZoomOffset < 0) {
-            const divisor = 2 ** -googleZoomOffset;
+          const mapZoom = baseZoom + mapZoomOffset;
+          if (mapZoomOffset < 0) {
+            const divisor = 2 ** -mapZoomOffset;
             const tileX = Math.floor(x / divisor);
             const tileY = Math.floor(y / divisor);
             const url =
@@ -323,7 +469,7 @@ async function loadMapTile(
             return { blob, provider: 'GOOGLE' } as const;
           }
 
-          const scale = 2 ** googleZoomOffset;
+          const scale = 2 ** mapZoomOffset;
           const subtiles = await Promise.all(
             Array.from({ length: scale * scale }, async (_, index) => {
               const column = index % scale;
@@ -405,6 +551,7 @@ export function TerrainView({
   exaggeration,
   highDetail,
   mapOverlay,
+  mapSource,
   wireframe,
   resetSignal,
   onStats,
@@ -836,7 +983,7 @@ export function TerrainView({
           mesh: ThreeTypes.Mesh;
           material: ThreeTypes.MeshStandardMaterial;
           texture: ThreeTypes.Texture | null;
-          provider: 'GOOGLE' | 'OPENTOPO' | 'NONE';
+          provider: MapProvider;
           lod: TerrainLod;
           triangles: number;
         };
@@ -915,6 +1062,10 @@ export function TerrainView({
                     tile.x,
                     tile.y,
                     getMapZoomOffset(lod),
+                    ZOOM,
+                    mapSource,
+                    center.latitude,
+                    center.longitude,
                   ).catch((error) => {
                     console.warn(error);
                     return null;
@@ -1434,7 +1585,15 @@ export function TerrainView({
                 try {
                   const [tile, mapBlob] = await Promise.all([
                     loadTile(x, y, zoom),
-                    loadMapTile(x, y, mapZoomOffset, zoom).catch((error) => {
+                    loadMapTile(
+                      x,
+                      y,
+                      mapZoomOffset,
+                      zoom,
+                      mapSource,
+                      center.latitude,
+                      center.longitude,
+                    ).catch((error) => {
                       console.warn('[terrain] horizon map failed', {
                         x,
                         y,
@@ -3379,7 +3538,7 @@ export function TerrainView({
       materialRefs.current = [];
       resetRef.current = null;
     };
-  }, [center.latitude, center.longitude, highDetail, onStats]);
+  }, [center.latitude, center.longitude, highDetail, mapSource, onStats]);
 
   return (
     <div ref={mountRef} className="terrain-viewport">

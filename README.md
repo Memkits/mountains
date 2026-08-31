@@ -24,7 +24,7 @@ npm run preview
 
 右侧控制面板提供“跳转至经纬度”输入框（WGS 84）。默认经纬度已预填；输入纬度 `-85` 至 `85`、经度 `-180` 至 `180` 后点击“跳转观察”即可重新加载该区域的地形与影像。
 
-## Google Satellite 密钥
+## 卫星影像密钥
 
 Google Map Tiles API Key 是浏览器侧地图访问凭据，**不得提交到 Git**。`.env*` 已被 `.gitignore` 忽略，仓库只保留不含值的 [.env.example](.env.example)。
 
@@ -41,6 +41,10 @@ cp .env.example .env.local
 3. 为 Key 设置 HTTP referrer 限制：本地可用 `http://localhost:3001/*`；生产环境填写实际部署站点域名。
 
 部署工作流读取组织或仓库 Actions Secret `VITE_GOOGLE_MAPS_API_KEY`。即使使用 Secret，Web 地图 Key 在浏览器请求中仍可见，因此必须限制 API、来源域名与配额；Secret 的作用是避免 Key 出现在源码与 Git 历史中。
+
+天地图使用浏览器端 Key。为避免将 Key 写成 Vite 的默认公开变量，本项目读取本地或 CI 环境的 `TIANDITU_API_KEY`，仅在构建时映射到前端图层。生产环境同名 Actions Secret 会传入部署构建；请在天地图控制台限制本地及实际部署域名。
+
+右侧“影像数据源”菜单支持自动、天地图卫星影像、Google Satellite 和 OpenTopoMap。自动模式在中国经纬度范围优先天地图，在其他区域继续使用 Google（不可用时回退到 OpenTopoMap）。三者只影响表面影像，地形高程仍来自 DEM。
 
 ## 控制
 
@@ -63,4 +67,4 @@ cp .env.example .env.local
 
 工作流位于 [.github/workflows/deploy-server.yml](.github/workflows/deploy-server.yml)。向 `main` 推送会构建 `dist/client/`，再通过 `rsync` 上传至已配置的服务器目录。
 
-服务器凭据沿用项目原有的组织或仓库 Secret `rsync_private_key`；地图 Key 使用 `VITE_GOOGLE_MAPS_API_KEY`。未配置地图 Key 的页面仍可运行，并会在浏览器中提示用户提供受限 Key 或回退到 OpenTopoMap。
+服务器凭据沿用项目原有的组织或仓库 Secret `rsync_private_key`；地图 Key 使用 `VITE_GOOGLE_MAPS_API_KEY` 和可选的 `TIANDITU_API_KEY`。未配置地图 Key 的页面仍可运行，并会回退到 OpenTopoMap。

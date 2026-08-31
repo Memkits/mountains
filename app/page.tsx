@@ -13,7 +13,11 @@ import {
 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 
-import { TerrainView, type TerrainStats } from '@/components/terrain-view';
+import {
+  TerrainView,
+  type MapSource,
+  type TerrainStats,
+} from '@/components/terrain-view';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -168,6 +172,7 @@ export default function Home() {
   const [exaggeration, setExaggeration] = useState(1);
   const [wireframe, setWireframe] = useState(false);
   const [mapOverlay, setMapOverlay] = useState(true);
+  const [mapSource, setMapSource] = useState<MapSource>('AUTO');
   const [highDetail, setHighDetail] = useState(true);
   const [resetSignal, setResetSignal] = useState(0);
   const [stats, setStats] = useState<TerrainStats>(initialStats);
@@ -267,6 +272,7 @@ export default function Home() {
         exaggeration={exaggeration}
         highDetail={highDetail}
         mapOverlay={mapOverlay}
+        mapSource={mapSource}
         resetSignal={resetSignal}
         wireframe={wireframe}
         onStats={setStats}
@@ -452,7 +458,9 @@ export default function Home() {
             <span>
               {stats.mapProvider === 'GOOGLE'
                 ? 'Google Satellite · 自适应 Z14 → Z11 · 地平线 Z9'
-                : 'OpenTopoMap · 道路 / 地名 / 等高线'}
+                : stats.mapProvider === 'TIANDITU'
+                  ? '天地图影像 · 中国区域卫星底图'
+                  : 'OpenTopoMap · 道路 / 地名 / 等高线'}
             </span>
           </div>
           <Switch
@@ -461,6 +469,20 @@ export default function Home() {
             onCheckedChange={setMapOverlay}
           />
         </div>
+
+        <label className="map-source-select" htmlFor="terrain-map-source">
+          <span>影像数据源</span>
+          <select
+            id="terrain-map-source"
+            value={mapSource}
+            onChange={(event) => setMapSource(event.target.value as MapSource)}
+          >
+            <option value="AUTO">自动（中国优先天地图）</option>
+            <option value="TIANDITU">天地图卫星影像</option>
+            <option value="GOOGLE">Google Satellite</option>
+            <option value="OPENTOPO">OpenTopoMap</option>
+          </select>
+        </label>
 
         <div className="toggle-row">
           <div>
@@ -578,7 +600,9 @@ export default function Home() {
             {mapOverlay
               ? stats.mapProvider === 'GOOGLE'
                 ? 'GOOGLE MAP'
-                : 'TOPO MAP'
+                : stats.mapProvider === 'TIANDITU'
+                  ? 'TIANDITU'
+                  : 'TOPO MAP'
               : highDetail
                 ? 'HIGH'
                 : 'BALANCED'}
@@ -595,6 +619,8 @@ export default function Home() {
         DEM · Mapzen Terrain Tiles / SRTM ·{' '}
         {stats.mapProvider === 'GOOGLE' ? (
           <>Map data © Google</>
+        ) : stats.mapProvider === 'TIANDITU' ? (
+          <>Map data © 天地图</>
         ) : (
           <>
             Map data ©{' '}
