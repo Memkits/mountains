@@ -460,7 +460,9 @@ export default function Home() {
                 ? 'Google Satellite · 自适应 Z14 → Z11 · 地平线 Z9'
                 : stats.mapProvider === 'TIANDITU'
                   ? '天地图影像 · 中国区域卫星底图'
-                  : 'OpenTopoMap · 道路 / 地名 / 等高线'}
+                  : stats.mapProvider === 'OPENTOPO'
+                    ? 'OpenTopoMap · 道路 / 地名 / 等高线'
+                    : '影像瓦片加载中'}
             </span>
           </div>
           <Switch
@@ -602,7 +604,9 @@ export default function Home() {
                 ? 'GOOGLE MAP'
                 : stats.mapProvider === 'TIANDITU'
                   ? 'TIANDITU'
-                  : 'TOPO MAP'
+                  : stats.mapProvider === 'OPENTOPO'
+                    ? 'TOPO MAP'
+                    : 'LOADING'
               : highDetail
                 ? 'HIGH'
                 : 'BALANCED'}
@@ -621,7 +625,7 @@ export default function Home() {
           <>Map data © Google</>
         ) : stats.mapProvider === 'TIANDITU' ? (
           <>Map data © 天地图</>
-        ) : (
+        ) : stats.mapProvider === 'OPENTOPO' ? (
           <>
             Map data ©{' '}
             <a
@@ -636,6 +640,8 @@ export default function Home() {
               OpenTopoMap
             </a>
           </>
+        ) : (
+          <>Map imagery loading</>
         )}
       </p>
 

@@ -307,22 +307,30 @@ async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
     TILECOL: `${x}`,
     tk: tiandituApiKey,
   });
-  // Spread concurrent high-detail subtile requests across TianDiTu's public
-  // tile hosts. A single terrain tile may require up to sixteen image tiles.
-  const host = Math.abs(x * 31 + y * 17 + zoom) % 8;
   return withTiandituRequestSlot(async () => {
-    const response = await fetch(
-      `https://t${host}.tianditu.gov.cn/img_w/wmts?${params}`,
-      {
-        mode: 'cors',
-      },
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Tianditu image tile ${zoom}/${x}/${y} failed (${response.status})`,
-      );
+    // Spread requests across TianDiTu's public hosts and retry another node.
+    // The hosts serve the same WMTS matrix, so changing host cannot change the
+    // imagery or its coordinate system.
+    const firstHost = Math.abs(x * 31 + y * 17 + zoom) % 8;
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const host = (firstHost + attempt * 3) % 8;
+      try {
+        const response = await fetch(
+          `https://t${host}.tianditu.gov.cn/img_w/wmts?${params}`,
+          { mode: 'cors' },
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return await createImageBitmap(await response.blob());
+      } catch (error) {
+        lastError = error;
+      }
     }
-    return createImageBitmap(await response.blob());
+    throw new Error(`Tianditu image tile ${zoom}/${x}/${y} failed`, {
+      cause: lastError,
+    });
   });
 }
 
@@ -337,7 +345,12 @@ async function loadTiandituMapTile(
   const scale = zoomOffset > 0 ? 2 ** zoomOffset : 1;
   const originX = zoomOffset < 0 ? Math.floor(x / divisor) : x * scale;
   const originY = zoomOffset < 0 ? Math.floor(y / divisor) : y * scale;
-  const bitmap = await fetchTiandituBitmap(originX, originY, mapZoom);
+  const [bitmap, colorReference] = await Promise.all([
+    fetchTiandituBitmap(originX, originY, mapZoom),
+    zoomOffset > 0
+      ? fetchTiandituBitmap(x, y, baseZoom).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   if (zoomOffset < 0) {
     const width = bitmap.width / divisor;
@@ -404,6 +417,17 @@ async function loadTiandituMapTile(
     context.drawImage(subtile, column * tileWidth, row * tileHeight);
     subtile.close();
   });
+  if (colorReference) {
+    // TianDiTu's Z13/Z14 imagery around high mountains may come from a
+    // different season and colour grade than Z12. Transfer the parent tile's
+    // hue/saturation while retaining the high-resolution luminance detail.
+    context.save();
+    context.globalCompositeOperation = 'color';
+    context.globalAlpha = 0.82;
+    context.drawImage(colorReference, 0, 0, canvas.width, canvas.height);
+    context.restore();
+    colorReference.close();
+  }
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (value) =>
@@ -432,7 +456,7 @@ async function loadMapTile(
         ? 'TIANDITU'
         : 'GOOGLE'
       : source;
-  let apiKey = resolvedSource === 'GOOGLE' ? getGoogleMapsApiKey() : null;
+  const apiKey = resolvedSource === 'GOOGLE' ? getGoogleMapsApiKey() : null;
   const key = `${resolvedSource.toLowerCase()}-z${baseZoom + mapZoomOffset}/${baseZoom}/${x}/${y}`;
   const cached = mapTileCache.get(key);
   if (cached) {
@@ -441,16 +465,29 @@ async function loadMapTile(
   }
 
   const task = (async () => {
-    if (resolvedSource === 'TIANDITU' && tiandituApiKey) {
-      try {
-        return await loadTiandituMapTile(x, y, mapZoomOffset, baseZoom);
-      } catch (error) {
-        console.warn(
-          'Tianditu image tiles unavailable; using fallback.',
-          error,
-        );
-        if (source === 'AUTO') apiKey = getGoogleMapsApiKey();
+    if (resolvedSource === 'TIANDITU') {
+      if (!tiandituApiKey) throw new Error('Tianditu API key is unavailable');
+      let lastError: unknown = null;
+      const minimumOffset = Math.min(mapZoomOffset, 0);
+      for (
+        let candidateOffset = mapZoomOffset;
+        candidateOffset >= minimumOffset;
+        candidateOffset -= 1
+      ) {
+        try {
+          return await loadTiandituMapTile(x, y, candidateOffset, baseZoom);
+        } catch (error) {
+          lastError = error;
+          console.warn('[terrain] Tianditu tile retry at parent zoom', {
+            tile: `${baseZoom}/${x}/${y}`,
+            failedImageZoom: baseZoom + candidateOffset,
+            error,
+          });
+        }
       }
+      // Never mix Google/OpenTopoMap into individual TianDiTu tiles: a
+      // partially switched provider is much more visible than a missing map.
+      throw lastError ?? new Error('Tianditu image tile unavailable');
     }
     if (apiKey) {
       try {
@@ -1064,13 +1101,22 @@ export function TerrainView({
           statsRef.current.loadedMapTiles = records.filter(
             ({ texture }) => texture !== null,
           ).length;
-          statsRef.current.mapProvider = records.some(
-            ({ provider }) => provider === 'GOOGLE',
-          )
-            ? 'GOOGLE'
-            : records.some(({ provider }) => provider === 'OPENTOPO')
-              ? 'OPENTOPO'
-              : 'NONE';
+          const providerCounts: Record<MapProvider, number> = {
+            GOOGLE: 0,
+            TIANDITU: 0,
+            OPENTOPO: 0,
+            NONE: 0,
+          };
+          records.forEach(({ provider }) => {
+            providerCounts[provider] += 1;
+          });
+          statsRef.current.mapProvider = (
+            ['TIANDITU', 'GOOGLE', 'OPENTOPO', 'NONE'] as const
+          ).reduce((mostUsed, provider) =>
+            providerCounts[provider] > providerCounts[mostUsed]
+              ? provider
+              : mostUsed,
+          );
           statsRef.current.triangles = records.reduce(
             (total, { triangles }) => total + triangles,
             0,
@@ -1270,12 +1316,15 @@ export function TerrainView({
                 triangles: segments * segments * 2,
               });
               if (lod === 'near') {
-                console.info('[terrain] near texture ready', {
-                  tile: key,
-                  terrainLod: lod,
-                  imageZoom: ZOOM + getMapZoomOffset(lod),
-                  provider: mapBlob?.provider ?? 'NONE',
-                });
+                console.info(
+                  '[terrain] near texture ready',
+                  JSON.stringify({
+                    tile: key,
+                    terrainLod: lod,
+                    requestedImageZoom: ZOOM + getMapZoomOffset(lod),
+                    provider: mapBlob?.provider ?? 'NONE',
+                  }),
+                );
               }
               if (showBlockingLoading) {
                 updateTerrainStats();
