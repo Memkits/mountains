@@ -80,9 +80,9 @@ const TIANDITU_MAP_MID_ZOOM_OFFSET = 1;
 const TIANDITU_MAP_FAR_ZOOM_OFFSET = 0;
 const TIANDITU_MAP_ULTRA_ZOOM_OFFSET = -1;
 const TIANDITU_FOCUS_IMAGE_ZOOM = 18;
-const FOCUS_IMAGE_TILE_RADIUS = 1;
-const FOCUS_IMAGE_FORWARD_STEPS = 7;
-const FOCUS_IMAGE_SEGMENTS = 12;
+const FOCUS_IMAGE_TILE_RADIUS = 2;
+const FOCUS_IMAGE_FORWARD_STEPS = 10;
+const FOCUS_IMAGE_SEGMENTS = 16;
 const FOCUS_IMAGE_ELEVATION_OFFSET = 0.7;
 const FOCUS_IMAGE_MAX_DISTANCE = 42_000;
 const NEAR_TILE_RADIUS = 1;
@@ -103,7 +103,7 @@ const INITIAL_TILE_COUNT = (NEAR_TILE_RADIUS * 2 + 1) ** 2;
 const TILE_COUNT = (FAR_TILE_RADIUS * 2 + 1) ** 2;
 const MAX_ELEVATION_CACHE_TILES = 64;
 const MAX_MAP_CACHE_TILES = 32;
-const MAX_FOCUS_IMAGE_CACHE_TILES = 64;
+const MAX_FOCUS_IMAGE_CACHE_TILES = 128;
 const GAMEPAD_PIVOT_DISTANCE = 8;
 const GAMEPAD_MOVE_SPEED_MPS = 33.34;
 const GAMEPAD_TURN_SPEED_RAD = 0.12;
@@ -1761,7 +1761,11 @@ export function TerrainView({
           const texture = new THREE.CanvasTexture(canvas);
           texture.colorSpace = THREE.SRGBColorSpace;
           texture.anisotropy = 16;
-          texture.minFilter = THREE.LinearMipmapLinearFilter;
+          // This is an intentionally small, camera-facing Z18 window. Mip
+          // selection makes it visibly soft on a steep oblique slope, while
+          // the surrounding Z14/Z15 terrain keeps distant aliasing bounded.
+          texture.generateMipmaps = false;
+          texture.minFilter = THREE.LinearFilter;
           texture.magFilter = THREE.LinearFilter;
           texture.needsUpdate = true;
           const material = new THREE.MeshStandardMaterial({
