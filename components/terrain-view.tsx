@@ -80,8 +80,10 @@ const TIANDITU_MAP_MID_ZOOM_OFFSET = 1;
 const TIANDITU_MAP_FAR_ZOOM_OFFSET = 0;
 const TIANDITU_MAP_ULTRA_ZOOM_OFFSET = -1;
 const TIANDITU_FOCUS_IMAGE_ZOOM = 18;
-const FOCUS_IMAGE_SEGMENTS = 16;
-const FOCUS_IMAGE_ELEVATION_OFFSET = 0.7;
+// One Z18 image tile covers roughly four samples of the Z12 Terrarium DEM.
+// More subdivisions only repeat those samples and create stepped triangles.
+const FOCUS_IMAGE_SEGMENTS = 4;
+const FOCUS_IMAGE_SURFACE_OFFSET = 2.5;
 const FOCUS_IMAGE_MAX_DISTANCE = 42_000;
 const NEAR_TILE_RADIUS = 1;
 const FAR_TILE_RADIUS = 3;
@@ -1655,8 +1657,7 @@ export function TerrainView({
               const vertex = row * (segments + 1) + column;
               const offset = vertex * 3;
               positions[offset] = (worldTileX - centerTile.x) * tileMeterSize;
-              positions[offset + 1] =
-                elevation - BASE_ELEVATION + FOCUS_IMAGE_ELEVATION_OFFSET;
+              positions[offset + 1] = elevation - BASE_ELEVATION;
               positions[offset + 2] =
                 (worldTileY - centerTile.y) * tileMeterSize;
               const normalX =
@@ -1685,6 +1686,13 @@ export function TerrainView({
               normals[offset] = normalX / normalLength;
               normals[offset + 1] = normalRun / normalLength;
               normals[offset + 2] = normalZ / normalLength;
+              // Lift the patch along the surface normal so it remains in
+              // front of the base mesh on steep slopes as well as flat land.
+              positions[offset] += normals[offset] * FOCUS_IMAGE_SURFACE_OFFSET;
+              positions[offset + 1] +=
+                normals[offset + 1] * FOCUS_IMAGE_SURFACE_OFFSET;
+              positions[offset + 2] +=
+                normals[offset + 2] * FOCUS_IMAGE_SURFACE_OFFSET;
               heightColor(elevation, tempColor, colorStops);
               colors[offset] = tempColor.r;
               colors[offset + 1] = tempColor.g;
@@ -1745,8 +1753,8 @@ export function TerrainView({
             metalness: 0,
             wireframe: wireframeRef.current,
             polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1,
+            polygonOffsetFactor: -4,
+            polygonOffsetUnits: -4,
           });
           const key = focusImageKey(coordinate);
           if (focusImagePatchRecords.has(key)) disposeFocusImagePatch(key);
