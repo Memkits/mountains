@@ -80,10 +80,10 @@ const TIANDITU_MAP_MID_ZOOM_OFFSET = 1;
 const TIANDITU_MAP_FAR_ZOOM_OFFSET = 0;
 const TIANDITU_MAP_ULTRA_ZOOM_OFFSET = -1;
 const TIANDITU_FOCUS_IMAGE_ZOOM = 18;
-const FOCUS_IMAGE_TILE_RADIUS = 2;
-const FOCUS_IMAGE_FORWARD_STEPS = 10;
-const FOCUS_IMAGE_SEGMENTS = 16;
-const FOCUS_IMAGE_ELEVATION_OFFSET = 0.7;
+// One Z18 image tile covers roughly four samples of the Z12 Terrarium DEM.
+// More subdivisions only repeat those samples and create stepped triangles.
+const FOCUS_IMAGE_SEGMENTS = 4;
+const FOCUS_IMAGE_SURFACE_OFFSET = 2.5;
 const FOCUS_IMAGE_MAX_DISTANCE = 42_000;
 const NEAR_TILE_RADIUS = 1;
 const FAR_TILE_RADIUS = 3;
@@ -103,7 +103,7 @@ const INITIAL_TILE_COUNT = (NEAR_TILE_RADIUS * 2 + 1) ** 2;
 const TILE_COUNT = (FAR_TILE_RADIUS * 2 + 1) ** 2;
 const MAX_ELEVATION_CACHE_TILES = 64;
 const MAX_MAP_CACHE_TILES = 32;
-const MAX_FOCUS_IMAGE_CACHE_TILES = 128;
+const MAX_FOCUS_IMAGE_CACHE_TILES = 256;
 const GAMEPAD_PIVOT_DISTANCE = 8;
 const GAMEPAD_MOVE_SPEED_MPS = 33.34;
 const GAMEPAD_TURN_SPEED_RAD = 0.12;
@@ -303,7 +303,7 @@ function isInChina(latitude: number, longitude: number) {
   );
 }
 
-async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
+async function fetchTiandituTileBlob(x: number, y: number, zoom: number) {
   const params = new URLSearchParams({
     SERVICE: 'WMTS',
     REQUEST: 'GetTile',
@@ -333,7 +333,7 @@ async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
-        return await createImageBitmap(await response.blob());
+        return await response.blob();
       } catch (error) {
         lastError = error;
       }
@@ -342,6 +342,11 @@ async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
       cause: lastError,
     });
   });
+}
+
+async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
+  const blob = await fetchTiandituTileBlob(x, y, zoom);
+  return withTiandituRequestSlot(() => createImageBitmap(blob));
 }
 
 async function loadTiandituMapTile(
@@ -462,48 +467,16 @@ async function loadTiandituFocusImageTile(
     return cached;
   }
 
-  const task = (async () => {
-    const parentScale = 2 ** (TIANDITU_FOCUS_IMAGE_ZOOM - ZOOM);
-    const [bitmap, colorReference] = await Promise.all([
-      fetchTiandituBitmap(x, y, TIANDITU_FOCUS_IMAGE_ZOOM),
-      fetchTiandituBitmap(
-        Math.floor(x / parentScale),
-        Math.floor(y / parentScale),
-        ZOOM,
-      ).catch(() => null),
-    ]);
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Unable to compose Tianditu focus image');
-    context.drawImage(bitmap, 0, 0);
-    bitmap.close();
-    if (colorReference) {
-      // Preserve the source's Z18 detail while matching the colour grade of
-      // the surrounding Z12 terrain texture.
-      context.save();
-      context.globalCompositeOperation = 'color';
-      context.globalAlpha = 0.82;
-      context.drawImage(colorReference, 0, 0, canvas.width, canvas.height);
-      context.restore();
-      colorReference.close();
-    }
-    const blob = await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob(
-        (value) =>
-          value
-            ? resolve(value)
-            : reject(new Error('Focus image encoding failed')),
-        'image/jpeg',
-        0.94,
-      ),
-    );
-    return { blob, provider: 'TIANDITU' } as const;
-  })().catch((error) => {
-    focusImageTileCache.delete(key);
-    throw error;
-  });
+  // Keep the close-range tile byte-for-byte as TianDiTu served it. The broad
+  // terrain layer still colour-matches adjacent zoom levels, but doing that
+  // here with a Z12 parent discards much of Z18's chroma detail. Avoiding the
+  // canvas round trip also removes an unnecessary lossy JPEG encode.
+  const task = fetchTiandituTileBlob(x, y, TIANDITU_FOCUS_IMAGE_ZOOM)
+    .then((blob) => ({ blob, provider: 'TIANDITU' }) as const)
+    .catch((error) => {
+      focusImageTileCache.delete(key);
+      throw error;
+    });
   focusImageTileCache.set(key, task);
   void task.then(() =>
     trimCache(focusImageTileCache, MAX_FOCUS_IMAGE_CACHE_TILES),
@@ -1598,6 +1571,22 @@ export function TerrainView({
             return [] as FocusImageCoordinate[];
           }
 
+          // Expand the native Z18 window only when those texels can contribute
+          // visible screen detail. At altitude the same area falls back to a
+          // much smaller window and the lower-resolution terrain underneath.
+          let radius = 1;
+          let forwardSteps = 3;
+          if (distance <= 4_000) {
+            radius = 4;
+            forwardSteps = 5;
+          } else if (distance <= 12_000) {
+            radius = 3;
+            forwardSteps = 6;
+          } else if (distance <= 24_000) {
+            radius = 2;
+            forwardSteps = 5;
+          }
+
           const centerX = Math.floor(focusTileX * focusImageScale);
           const centerY = Math.floor(focusTileY * focusImageScale);
           const directionX = cameraTileX - focusTileX;
@@ -1613,27 +1602,15 @@ export function TerrainView({
             desired.set(focusImageKey(coordinate), coordinate);
           };
 
-          for (
-            let row = -FOCUS_IMAGE_TILE_RADIUS;
-            row <= FOCUS_IMAGE_TILE_RADIUS;
-            row += 1
-          ) {
-            for (
-              let column = -FOCUS_IMAGE_TILE_RADIUS;
-              column <= FOCUS_IMAGE_TILE_RADIUS;
-              column += 1
-            ) {
+          for (let row = -radius; row <= radius; row += 1) {
+            for (let column = -radius; column <= radius; column += 1) {
               add(centerX + column, centerY + row);
             }
           }
           // Extend the detail window toward the camera: this is the part of
           // the terrain most likely to fill the lower half of the viewport.
-          for (let step = 1; step <= FOCUS_IMAGE_FORWARD_STEPS; step += 1) {
-            for (
-              let lateral = -FOCUS_IMAGE_TILE_RADIUS;
-              lateral <= FOCUS_IMAGE_TILE_RADIUS;
-              lateral += 1
-            ) {
+          for (let step = 1; step <= forwardSteps; step += 1) {
+            for (let lateral = -radius; lateral <= radius; lateral += 1) {
               add(
                 centerX + Math.round(forwardX * step * 2 + sideX * lateral),
                 centerY + Math.round(forwardY * step * 2 + sideY * lateral),
@@ -1685,8 +1662,7 @@ export function TerrainView({
               const vertex = row * (segments + 1) + column;
               const offset = vertex * 3;
               positions[offset] = (worldTileX - centerTile.x) * tileMeterSize;
-              positions[offset + 1] =
-                elevation - BASE_ELEVATION + FOCUS_IMAGE_ELEVATION_OFFSET;
+              positions[offset + 1] = elevation - BASE_ELEVATION;
               positions[offset + 2] =
                 (worldTileY - centerTile.y) * tileMeterSize;
               const normalX =
@@ -1715,6 +1691,13 @@ export function TerrainView({
               normals[offset] = normalX / normalLength;
               normals[offset + 1] = normalRun / normalLength;
               normals[offset + 2] = normalZ / normalLength;
+              // Lift the patch along the surface normal so it remains in
+              // front of the base mesh on steep slopes as well as flat land.
+              positions[offset] += normals[offset] * FOCUS_IMAGE_SURFACE_OFFSET;
+              positions[offset + 1] +=
+                normals[offset + 1] * FOCUS_IMAGE_SURFACE_OFFSET;
+              positions[offset + 2] +=
+                normals[offset + 2] * FOCUS_IMAGE_SURFACE_OFFSET;
               heightColor(elevation, tempColor, colorStops);
               colors[offset] = tempColor.r;
               colors[offset + 1] = tempColor.g;
@@ -1775,8 +1758,8 @@ export function TerrainView({
             metalness: 0,
             wireframe: wireframeRef.current,
             polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1,
+            polygonOffsetFactor: -4,
+            polygonOffsetUnits: -4,
           });
           const key = focusImageKey(coordinate);
           if (focusImagePatchRecords.has(key)) disposeFocusImagePatch(key);
@@ -1833,10 +1816,13 @@ export function TerrainView({
             if (!desiredKeys.has(key)) disposeFocusImagePatch(key);
           });
           focusImageSignature = desiredSignature;
-          console.info('[terrain] focus Z18 imagery ready', {
-            patches: focusImagePatchRecords.size,
-            imageZoom: TIANDITU_FOCUS_IMAGE_ZOOM,
-          });
+          console.info(
+            '[terrain] focus Z18 imagery ready',
+            JSON.stringify({
+              patches: focusImagePatchRecords.size,
+              imageZoom: TIANDITU_FOCUS_IMAGE_ZOOM,
+            }),
+          );
         };
         const requestFocusImageWindow = (
           focusPosition: ThreeTypes.Vector3,
