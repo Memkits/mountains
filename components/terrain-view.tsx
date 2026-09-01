@@ -63,7 +63,7 @@ const HORIZON_ZOOM = 10;
 const HORIZON_TILE_RADIUS = 3;
 const HORIZON_SEGMENTS = 15;
 const FAR_HORIZON_ZOOM = 8;
-const FAR_HORIZON_TILE_RADIUS = 3;
+const FAR_HORIZON_TILE_RADIUS = 2;
 const FAR_HORIZON_SEGMENTS = 7;
 const FAR_HORIZON_ACTIVATION_HEIGHT = 20_000;
 const HORIZON_ELEVATION_OFFSET = 1_200;
@@ -102,7 +102,10 @@ const LOD_FAR_HYSTERESIS_PIXELS = 130;
 const INITIAL_TILE_COUNT = (NEAR_TILE_RADIUS * 2 + 1) ** 2;
 const TILE_COUNT = (FAR_TILE_RADIUS * 2 + 1) ** 2;
 const MAX_ELEVATION_CACHE_TILES = 64;
-const MAX_MAP_CACHE_TILES = 32;
+// One terrain window plus both horizon rings can reference well over 100 map
+// tiles. Keep those low-resolution blobs resident so altitude changes do not
+// immediately evict and re-request the same background imagery.
+const MAX_MAP_CACHE_TILES = 160;
 const MAX_FOCUS_IMAGE_CACHE_TILES = 256;
 const GAMEPAD_PIVOT_DISTANCE = 8;
 const GAMEPAD_MOVE_SPEED_MPS = 33.34;
@@ -129,8 +132,52 @@ const mapTileCache = new Map<string, Promise<MapTileData>>();
 const focusImageTileCache = new Map<string, Promise<MapTileData>>();
 let googleTileSessionPromise: Promise<GoogleTileSession> | null = null;
 const MAX_CONCURRENT_TIANDITU_REQUESTS = 8;
+const TIANDITU_PERMISSION_COOLDOWN_MS = 5 * 60_000;
+const TIANDITU_TRANSIENT_COOLDOWN_MS = 30_000;
 let activeTiandituRequests = 0;
+let tiandituUnavailableUntil = 0;
+let lastTiandituHttpStatus: number | null = null;
 const tiandituRequestQueue: Array<() => void> = [];
+
+class TiandituHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+    this.name = 'TiandituHttpError';
+  }
+}
+
+function getTiandituHttpStatus(error: unknown): number | null {
+  let current = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+    if (current instanceof TiandituHttpError) return current.status;
+    current = current.cause;
+  }
+  return null;
+}
+
+function isTiandituAvailable() {
+  return Date.now() >= tiandituUnavailableUntil;
+}
+
+function suspendTiandituRequests(error: unknown) {
+  const status = getTiandituHttpStatus(error);
+  lastTiandituHttpStatus = status;
+  const duration =
+    status === 401 || status === 403 || status === 429
+      ? TIANDITU_PERMISSION_COOLDOWN_MS
+      : TIANDITU_TRANSIENT_COOLDOWN_MS;
+  const wasAvailable = isTiandituAvailable();
+  tiandituUnavailableUntil = Math.max(
+    tiandituUnavailableUntil,
+    Date.now() + duration,
+  );
+  if (wasAvailable) {
+    console.warn(
+      '[terrain] Tianditu unavailable; requests are paused until the user switches source or the cooldown expires',
+      JSON.stringify({ status, cooldownSeconds: duration / 1_000 }),
+    );
+  }
+}
 
 async function withTiandituRequestSlot<T>(task: () => Promise<T>) {
   if (activeTiandituRequests >= MAX_CONCURRENT_TIANDITU_REQUESTS) {
@@ -239,7 +286,10 @@ async function loadTile(x: number, y: number, zoom = ZOOM): Promise<TileData> {
     throw error;
   });
   tileCache.set(key, task);
-  void task.then(() => trimCache(tileCache, MAX_ELEVATION_CACHE_TILES));
+  void task.then(
+    () => trimCache(tileCache, MAX_ELEVATION_CACHE_TILES),
+    () => undefined,
+  );
   return task;
 }
 
@@ -330,12 +380,12 @@ async function fetchTiandituTileBlob(x: number, y: number, zoom: number) {
           `https://t${host}.tianditu.gov.cn/img_w/wmts?${params}`,
           { mode: 'cors' },
         );
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new TiandituHttpError(response.status);
         return await response.blob();
       } catch (error) {
         lastError = error;
+        const status = getTiandituHttpStatus(error);
+        if (status === 401 || status === 403 || status === 429) break;
       }
     }
     throw new Error(`Tianditu image tile ${zoom}/${x}/${y} failed`, {
@@ -478,8 +528,9 @@ async function loadTiandituFocusImageTile(
       throw error;
     });
   focusImageTileCache.set(key, task);
-  void task.then(() =>
-    trimCache(focusImageTileCache, MAX_FOCUS_IMAGE_CACHE_TILES),
+  void task.then(
+    () => trimCache(focusImageTileCache, MAX_FOCUS_IMAGE_CACHE_TILES),
+    () => undefined,
   );
   return task;
 }
@@ -510,6 +561,11 @@ async function loadMapTile(
   const task = (async () => {
     if (resolvedSource === 'TIANDITU') {
       if (!tiandituApiKey) throw new Error('Tianditu API key is unavailable');
+      if (!isTiandituAvailable()) {
+        throw new Error(
+          `Tianditu image requests are paused${lastTiandituHttpStatus ? ` (HTTP ${lastTiandituHttpStatus})` : ''}`,
+        );
+      }
       let lastError: unknown = null;
       const minimumOffset = Math.min(mapZoomOffset, 0);
       for (
@@ -521,15 +577,17 @@ async function loadMapTile(
           return await loadTiandituMapTile(x, y, candidateOffset, baseZoom);
         } catch (error) {
           lastError = error;
+          const status = getTiandituHttpStatus(error);
           console.warn('[terrain] Tianditu tile retry at parent zoom', {
             tile: `${baseZoom}/${x}/${y}`,
             failedImageZoom: baseZoom + candidateOffset,
+            status,
             error,
           });
+          if (status === 401 || status === 403 || status === 429) break;
         }
       }
-      // Never mix Google/OpenTopoMap into individual TianDiTu tiles: a
-      // partially switched provider is much more visible than a missing map.
+      suspendTiandituRequests(lastError);
       throw lastError ?? new Error('Tianditu image tile unavailable');
     }
     if (apiKey) {
@@ -653,7 +711,10 @@ async function loadMapTile(
   });
 
   mapTileCache.set(key, task);
-  void task.then(() => trimCache(mapTileCache, MAX_MAP_CACHE_TILES));
+  void task.then(
+    () => trimCache(mapTileCache, MAX_MAP_CACHE_TILES),
+    () => undefined,
+  );
   return task;
 }
 
@@ -700,6 +761,7 @@ export function TerrainView({
     renderer: 'INITIALIZING',
   });
   const [issue, setIssue] = useState<string | null>(null);
+  const [mapWarning, setMapWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState('PREPARING WEBGPU');
 
   useEffect(() => {
@@ -731,6 +793,7 @@ export function TerrainView({
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+    setMapWarning(null);
 
     const chrome =
       /Chrome\//.test(navigator.userAgent) &&
@@ -972,6 +1035,17 @@ export function TerrainView({
           (mapSource === 'AUTO' &&
             Boolean(tiandituApiKey) &&
             isInChina(center.latitude, center.longitude));
+        const canStreamTiandituImagery = () =>
+          usesTiandituImagery && isTiandituAvailable();
+        const reportMapFailure = (error: unknown) => {
+          if (!usesTiandituImagery) return;
+          const status = getTiandituHttpStatus(error) ?? lastTiandituHttpStatus;
+          setMapWarning(
+            status === 401 || status === 403 || status === 429
+              ? '天地图影像调用额度已用尽或 Key 权限受限，已暂停继续请求。请在右侧“影像数据源”中手动切换，或等待额度恢复。'
+              : '天地图影像暂时无法加载，已暂停继续请求。请检查网络与服务状态，或在右侧手动切换影像数据源。',
+          );
+        };
         const getMapZoomOffset = (lod: TerrainLod) => {
           // Let close terrain use TianDiTu's actual higher-resolution image
           // pyramid. The request queue keeps the 4x4/8x8 compositions from
@@ -1238,6 +1312,7 @@ export function TerrainView({
                     center.latitude,
                     center.longitude,
                   ).catch((error) => {
+                    reportMapFailure(error);
                     console.warn(error);
                     return null;
                   }),
@@ -1253,6 +1328,7 @@ export function TerrainView({
               if (skip || terrainTileRecords.get(key)?.lod === lod) {
                 continue;
               }
+              const existingRecord = terrainTileRecords.get(key);
               const segments = getLodSegments(lod);
               const vertexCount = (segments + 1) ** 2;
               const positions = new Float32Array(vertexCount * 3);
@@ -1335,7 +1411,13 @@ export function TerrainView({
               geometry.setIndex(new THREE.BufferAttribute(indices, 1));
               geometry.computeBoundingSphere();
 
-              let texture: ThreeTypes.Texture | null = null;
+              // A quota failure must not erase an already loaded TianDiTu
+              // texture merely because this tile is changing geometry LOD.
+              // Clone the same-provider texture before disposing the old mesh.
+              let texture: ThreeTypes.Texture | null =
+                !mapBlob && existingRecord?.texture
+                  ? existingRecord.texture.clone()
+                  : null;
               if (mapBlob) {
                 const bitmap = await createImageBitmap(mapBlob.blob);
                 const mapCanvas = document.createElement('canvas');
@@ -1348,6 +1430,8 @@ export function TerrainView({
                 texture.anisotropy = 16;
                 texture.minFilter = THREE.LinearMipmapLinearFilter;
                 texture.magFilter = THREE.LinearFilter;
+                texture.needsUpdate = true;
+              } else if (texture) {
                 texture.needsUpdate = true;
               }
 
@@ -1366,7 +1450,8 @@ export function TerrainView({
                 mesh,
                 material,
                 texture,
-                provider: mapBlob?.provider ?? 'NONE',
+                provider:
+                  mapBlob?.provider ?? existingRecord?.provider ?? 'NONE',
                 lod,
                 triangles: segments * segments * 2,
               });
@@ -1377,7 +1462,8 @@ export function TerrainView({
                     tile: key,
                     terrainLod: lod,
                     requestedImageZoom: ZOOM + getMapZoomOffset(lod),
-                    provider: mapBlob?.provider ?? 'NONE',
+                    provider:
+                      mapBlob?.provider ?? existingRecord?.provider ?? 'NONE',
                   }),
                 );
               }
@@ -1557,7 +1643,9 @@ export function TerrainView({
           focusPosition: ThreeTypes.Vector3,
           cameraPosition: ThreeTypes.Vector3,
         ) => {
-          if (!usesTiandituImagery) return [] as FocusImageCoordinate[];
+          if (!canStreamTiandituImagery()) {
+            return [] as FocusImageCoordinate[];
+          }
           const focusTileX = centerTile.x + focusPosition.x / tileMeterSize;
           const focusTileY = centerTile.y + focusPosition.z / tileMeterSize;
           const cameraTileX = centerTile.x + cameraPosition.x / tileMeterSize;
@@ -1800,6 +1888,7 @@ export function TerrainView({
                 try {
                   await buildFocusImagePatch(coordinate);
                 } catch (error) {
+                  reportMapFailure(error);
                   console.warn('[terrain] focus Z18 image failed', {
                     coordinate,
                     error,
@@ -2095,6 +2184,7 @@ export function TerrainView({
                       center.latitude,
                       center.longitude,
                     ).catch((error) => {
+                      reportMapFailure(error);
                       console.warn('[terrain] horizon map failed', {
                         x,
                         y,
@@ -4063,6 +4153,12 @@ export function TerrainView({
         <b ref={northHeadingRef}>画面上方 · 北 N</b>
         <span className="north-ai-note">AI 协助生成演示</span>
       </figure>
+      {mapWarning && !issue ? (
+        <output className="map-service-warning" role="alert">
+          <strong>天地图影像未加载</strong>
+          <span>{mapWarning}</span>
+        </output>
+      ) : null}
       {loading && !issue ? (
         <output className="loading-screen">
           <div className="loading-radar">
