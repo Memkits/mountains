@@ -345,7 +345,8 @@ async function fetchTiandituTileBlob(x: number, y: number, zoom: number) {
 }
 
 async function fetchTiandituBitmap(x: number, y: number, zoom: number) {
-  return createImageBitmap(await fetchTiandituTileBlob(x, y, zoom));
+  const blob = await fetchTiandituTileBlob(x, y, zoom);
+  return withTiandituRequestSlot(() => createImageBitmap(blob));
 }
 
 async function loadTiandituMapTile(
@@ -1573,14 +1574,18 @@ export function TerrainView({
           // Expand the native Z18 window only when those texels can contribute
           // visible screen detail. At altitude the same area falls back to a
           // much smaller window and the lower-resolution terrain underneath.
-          const { radius, forwardSteps } =
-            distance <= 4_000
-              ? { radius: 4, forwardSteps: 5 }
-              : distance <= 12_000
-                ? { radius: 3, forwardSteps: 6 }
-                : distance <= 24_000
-                  ? { radius: 2, forwardSteps: 5 }
-                  : { radius: 1, forwardSteps: 3 };
+          let radius = 1;
+          let forwardSteps = 3;
+          if (distance <= 4_000) {
+            radius = 4;
+            forwardSteps = 5;
+          } else if (distance <= 12_000) {
+            radius = 3;
+            forwardSteps = 6;
+          } else if (distance <= 24_000) {
+            radius = 2;
+            forwardSteps = 5;
+          }
 
           const centerX = Math.floor(focusTileX * focusImageScale);
           const centerY = Math.floor(focusTileY * focusImageScale);
